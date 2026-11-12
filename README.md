@@ -9,9 +9,9 @@ A todo list that lives in the [cmux](https://github.com/manaflow-ai/cmux) Dock: 
 │ 工作区    │                           │ Today  11月12日 周四      │
 │          │  Claude Code              │ 日程 3  要推进 5  待确认 8 │
 │ ▸ 周报    │                           ├──────────────────────────┤
-│ ▸ 问题归拢 │  > 请帮我处理这件待办…     │ ☐ 统计高影响问题   处理 ▸ │
-│          │                           │ ☐ 跨品类漏召回扫描 处理 ▸ │
-│          │                           │ ☑ 批年假和权限            │
+│ ▸ 问题归拢 │  > 请帮我处理这件待办…     │ ☐ 准备周四评审稿   处理 ▸ │
+│          │                           │ ☐ 回复供应商的邮件 处理 ▸ │
+│          │                           │ ☑ 订一间会议室            │
 └──────────┴───────────────────────────┴──────────────────────────┘
 ```
 
@@ -54,7 +54,7 @@ today dock       # 挂到 cmux 的 Dock（先打开 cmux）
 ```sh
 today add "给客户回邮件"                                   # 进“待确认”
 today add "周会" --status todo --time "2026-11-13 10:00-11:00"
-today add "核对上线工单" --source daily-summary --note "290704"
+today add "核对周五的会议材料" --source daily-summary --note "带上上周的数据"
 today list --status pending --json
 today set 261113-m01 done
 today ingest          # 把 inbox/ 里的 JSON 文件送进清单
@@ -66,9 +66,9 @@ today sync            # 同步模式：拉取、合并、推送
 ## 文件格式
 
 ```markdown
-- [待确认] 261112-m01 | 与 Alex 1:1：稳定性和性价比方向 | daily-summary | 2026-11-12
+- [待确认] 261112-m01 | 准备周四评审的材料 | daily-summary | 2026-11-12
   - 时间：2026-11-13 10:00
-  - 备注：他已发总结版
+  - 备注：先把上周的数据补齐
 ```
 
 每条一行：`- [状态] 编号 | 内容 | 来源 | 首次出现日期`，下面可以跟缩进的时间和备注。

@@ -3,3 +3,10 @@ __pycache__/
 .DS_Store
 .env
 config.json
+
+# Local board data and logs. examples/todo.md stays tracked.
+todo.md
+*.jsonl
+applied.json
+inbox/
+*.log
