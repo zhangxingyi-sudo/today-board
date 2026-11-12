@@ -36,10 +36,10 @@ A todo list that lives in the [cmux](https://github.com/manaflow-ai/cmux) Dock: 
 
 ## 安装
 
-需要 macOS、Python 3.9 以上，以及带 Dock 的 cmux。
+需要 macOS、Python 3.9 以上，以及带 Dock 的 cmux。界面目前只有中文。
 
 ```sh
-git clone <this-repo> today-board
+git clone https://github.com/zhangxingyi-sudo/today-board.git
 cd today-board
 ln -s "$PWD/bin/today" ~/.local/bin/today   # 或任何在 PATH 里的目录
 
@@ -91,9 +91,15 @@ today sync            # 同步模式：拉取、合并、推送
 | `agent_cwd` | `~` | 新对话的工作目录 |
 | `status_style` | `zh` | 写文件时用中文还是英文状态 |
 
+## 安全
+
+- 网页只监听 `127.0.0.1`。不要把它暴露到局域网或公网。
+- 多机同步用的清单仓库和这个代码仓库是两回事。清单里是待办正文，应单独放在私有 git 仓库，不要提交进本仓库，也不要改成公开。
+- “处理 ▸”会在本机执行 `config.json` 里的 `agent_command`。这个值来自你自己的配置，不要设成不可信的命令。
+
 ## 状态
 
-早期版本，接口可能变。界面目前只有中文。与 cmux 官方没有关联。
+早期版本，接口可能变。与 cmux 官方没有关联。
 
 ## License
 
