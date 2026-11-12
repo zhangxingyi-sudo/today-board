@@ -47,7 +47,7 @@ today install    # 注册为后台服务，开机自启
 today dock       # 挂到 cmux 的 Dock（先打开 cmux）
 ```
 
-数据默认放在 `~/.today-board/`。卸载服务用 `today uninstall`，数据不会被删除。
+数据默认放在 `~/.today-board/`。`today install` 会把程序复制一份到这个目录里运行，所以更新代码后要重新执行一次 `today install`。默认端口被占用时会自动换一个并写进配置。卸载服务用 `today uninstall`，数据不会被删除。
 
 ## 往清单里送事项
 

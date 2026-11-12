@@ -1,5 +1,5 @@
 """Command line for Today Board:  today <command>"""
-import argparse, json, os, pathlib, plistlib, subprocess, sys, time, urllib.request
+import argparse, json, os, pathlib, plistlib, shutil, socket, subprocess, sys, time, urllib.request
 from . import store
 
 LABEL = "io.today-board.server"
@@ -46,34 +46,60 @@ def cmd_merge(a):
         print(f"merged {n} event(s)")
 
 
+def _port_free(port):
+    with socket.socket() as s:
+        s.settimeout(0.3)
+        return s.connect_ex(("127.0.0.1", port)) != 0
+
+
 def cmd_install(a):
-    root = pathlib.Path(__file__).resolve().parent.parent
+    src = pathlib.Path(__file__).resolve().parent
+    uid = str(os.getuid())
+    subprocess.run(["launchctl", "bootout", f"gui/{uid}/{LABEL}"], capture_output=True)
+    time.sleep(0.5)
     store.HOME.mkdir(parents=True, exist_ok=True)
-    if not (store.HOME / "config.json").exists():
-        (store.HOME / "config.json").write_text(json.dumps({"mode": "local", "port": store.DEFAULTS["port"], "agent_command": "claude", "agent_cwd": "~"}, indent=2) + "\n")
+    # Run from a private copy inside the data folder. A background service on macOS cannot read
+    # ~/Documents, ~/Desktop or ~/Downloads without a privacy prompt, so a checkout there would fail.
+    app = store.HOME / "app"
+    shutil.rmtree(app / "today_board", ignore_errors=True)
+    shutil.copytree(src, app / "today_board", ignore=shutil.ignore_patterns("__pycache__"))
+    cf = store.HOME / "config.json"
+    conf = {"mode": "local", "port": store.DEFAULTS["port"], "agent_command": "claude", "agent_cwd": "~"}
+    if cf.exists():
+        try:
+            conf = json.loads(cf.read_text())
+        except ValueError:
+            sys.exit(f"{cf} is not valid JSON; fix or remove it and run install again")
+    port = int(conf.get("port", store.DEFAULTS["port"]))
+    if not _port_free(port):
+        free = next((p for p in range(port + 1, port + 50) if _port_free(p)), None)
+        if free is None:
+            sys.exit(f"port {port} is in use and no free port was found nearby; set \"port\" in {cf}")
+        print(f"port {port} is used by another program, using {free} instead")
+        conf["port"] = free
+    cf.write_text(json.dumps(conf, indent=2, ensure_ascii=False) + "\n")
     if not store.path("todo_file").exists():
         store.write_todo(["# Todo", ""], [])
     PLIST.parent.mkdir(parents=True, exist_ok=True)
     with PLIST.open("wb") as f:
-        plistlib.dump({"Label": LABEL, "ProgramArguments": [sys.executable, "-m", "today_board", "serve"], "WorkingDirectory": str(root),
-                       "EnvironmentVariables": {"TODAY_BOARD_HOME": str(store.HOME), "PYTHONPATH": str(root),
+        plistlib.dump({"Label": LABEL, "ProgramArguments": [sys.executable, "-m", "today_board", "serve"], "WorkingDirectory": str(store.HOME),
+                       "EnvironmentVariables": {"TODAY_BOARD_HOME": str(store.HOME), "PYTHONPATH": str(app),
                                                 "PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": str(pathlib.Path.home())},
                        "RunAtLoad": True, "KeepAlive": True,
                        "StandardOutPath": str(store.HOME / "server.log"), "StandardErrorPath": str(store.HOME / "server.log")}, f)
-    uid = str(os.getuid())
-    subprocess.run(["launchctl", "bootout", f"gui/{uid}/{LABEL}"], capture_output=True)
+    (store.HOME / "server.log").write_text("")
     r = subprocess.run(["launchctl", "bootstrap", f"gui/{uid}", str(PLIST)], capture_output=True, text=True)
     if r.returncode != 0:
         sys.exit("launchctl failed: " + r.stderr.strip())
-    for _ in range(20):
+    for _ in range(25):
         try:
-            urllib.request.urlopen(url() + "api/items", timeout=1)
+            json.loads(urllib.request.urlopen(url() + "api/items", timeout=1).read())
             break
-        except OSError:
+        except (OSError, ValueError):
             time.sleep(0.3)
     else:
         sys.exit(f"service was loaded but {url()} did not answer; see {store.HOME / 'server.log'}")
-    print(f"Today Board is running at {url()}\n  data: {store.HOME}\n  next: today dock")
+    print(f"Today Board is running at {url()}\n  data: {store.HOME}\n  next: today dock\n  after updating the code, run `today install` again")
 
 
 def cmd_uninstall(a):
