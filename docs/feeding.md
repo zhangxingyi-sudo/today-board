@@ -31,37 +31,50 @@ today add "季度评审" --time "2026-11-20 14:00-15:00" --source calendar
 
 为什么默认进“待确认”：自动抽取总会有误判。让机器只提议、人来点头，清单才不会被噪音淹没；被你忽略的事项也是一份很好的反馈，可以反过来用来调整抽取规则。
 
-## 二、双机：一台记操作，一台合并
+## 二、agent 不能运行命令时：丢一个文件进收件箱
 
-适合“采集和整理在一台常开的机器上，清单在你干活的那台机器上”的情况，两台之间用 git 仓库同步。
+有些定时任务里的 agent 只能写文件。让它把结果写成 `~/.today-board/inbox/<任意名字>.json`：
 
-约定每个文件只有一个写入者：
+```json
+[
+  {"text": "回复法务关于合同第 3 条的问题", "source": "inbox-summary"},
+  {"text": "季度评审", "source": "calendar", "time": "2026-11-20 14:00–15:00", "note": "带上数据"}
+]
+```
+
+然后运行 `today ingest`（同步模式下 `today sync` 会顺带执行）。事项全部进“待确认”；和清单里已有事项文字相同的会跳过，
+包括已完成和已忽略的，所以被你忽略的事不会再冒出来。处理过的文件移到 `inbox/done/`。
+
+## 三、多台电脑共用一份清单
+
+适合“一台常开的机器负责取料，你在另一台或几台电脑上干活”的情况。几台之间用一个 git 仓库同步，约定每个文件只有一个写入者：
 
 | 文件 | 谁写 |
 | --- | --- |
-| `todo/todo.md`、`todo/applied.json` | 负责整理的机器 |
-| `board/events.jsonl` | 你干活的机器（清单页面） |
+| `todo/todo.md`、`todo/applied.json` | 主机，唯一一台 `merge_here: true` 的机器 |
+| `board/<机器名>.jsonl` | 各台机器自己，只追加 |
 
-干活的机器，`config.json`：
+每台机器把仓库克隆到 `~/.today-board/sync`，`config.json`：
 
 ```json
 {
   "mode": "sync",
-  "todo_file": "/path/to/repo/todo/todo.md",
-  "events_file": "/path/to/repo/board/events.jsonl",
-  "applied_file": "/path/to/repo/todo/applied.json"
+  "merge_here": false,
+  "todo_file": "sync/todo/todo.md",
+  "events_file": "sync/board/macbook.jsonl",
+  "applied_file": "sync/todo/applied.json",
+  "id_letter": {"b": "c", "m": "n"}
 }
 ```
 
-它只追加 `events.jsonl`，定时 `git push`。页面显示的是“清单加上还没合并的操作”，所以点了立刻生效，带“待同步”标记的表示另一台还没合并。
+- 主机把 `merge_here` 设为 `true`，`events_file` 用自己的文件名，不需要 `id_letter`。
+- 其他机器的 `id_letter` 用来给本机新增的事项换一个编号字母，这样两台机器同时新增也不会撞号。每台用不同的字母。
+- `today install` 在同步模式下会多注册一个每 5 分钟运行一次的 `today sync`：拉取，主机负责合并，提交本机负责的文件，推送。
 
-负责整理的机器，同样的三个路径，定时执行：
-
-```sh
-git pull && today merge && git add todo && git commit -m "merge board events" && git push
-```
-
+每台机器的清单显示的都是“正式清单加上本机还没被合并的操作”，所以点了立刻生效，带“待同步”标记的表示主机还没合并。
 `today merge` 是幂等的：合并过的操作记在 `applied.json` 里，不会重复应用。
+
+把仓库放在 `~/.today-board/` 下面是有原因的：macOS 的后台服务读不了“文稿”“桌面”“下载”里的文件。
 
 ## 给写清单的 agent 的三条约定
 

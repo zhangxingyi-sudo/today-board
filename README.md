@@ -31,7 +31,7 @@ A todo list that lives in the [cmux](https://github.com/manaflow-ai/cmux) Dock: 
 - 点开任意一条可以改内容、填时间、写备注、换状态
 - 搜索，按日期筛选
 - 命令行 `today add`，给定时任务和 agent 往清单里送事项
-- 双机模式：一台机器只记操作，另一台负责合并，经 git 同步时不会两头写同一个文件
+- 多机同步：几台电脑经一个 git 仓库共用一份清单，每个文件只有一个写入者，不会冲突
 - 只监听 `127.0.0.1`，零第三方依赖，Python 3.9+
 
 ## 安装
@@ -57,6 +57,8 @@ today add "周会" --status todo --time "2026-11-13 10:00-11:00"
 today add "核对上线工单" --source daily-summary --note "290704"
 today list --status pending --json
 today set 261113-m01 done
+today ingest          # 把 inbox/ 里的 JSON 文件送进清单
+today sync            # 同步模式：拉取、合并、推送
 ```
 
 怎么让定时任务或 agent 每天自动整理出待办，见 [docs/feeding.md](docs/feeding.md)。
@@ -79,7 +81,8 @@ today set 261113-m01 done
 
 | 键 | 默认 | 说明 |
 | --- | --- | --- |
-| `mode` | `local` | `local` 立刻写进 `todo.md`；`sync` 只记操作，由另一台机器 `today merge` |
+| `mode` | `local` | `local` 单机；`sync` 多台电脑经 git 仓库共用一份清单，见 docs/feeding.md |
+| `merge_here` | `false` | 同步模式下，只有负责写 `todo.md` 的那一台设为 `true` |
 | `todo_file` | `todo.md` | 清单文件，相对路径以数据目录为准 |
 | `events_file` | `events.jsonl` | 操作记录，只追加 |
 | `applied_file` | `applied.json` | 已合并的操作，由执行合并的机器写 |

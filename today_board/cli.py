@@ -1,9 +1,11 @@
 """Command line for Today Board:  today <command>"""
-import argparse, json, os, pathlib, plistlib, shutil, socket, subprocess, sys, time, urllib.request
+import argparse, json, os, pathlib, plistlib, re, shutil, socket, subprocess, sys, time, urllib.request
 from . import store
 
 LABEL = "io.today-board.server"
 PLIST = pathlib.Path("~/Library/LaunchAgents").expanduser() / f"{LABEL}.plist"
+SYNC_LABEL = "io.today-board.sync"
+SYNC_PLIST = PLIST.with_name(f"{SYNC_LABEL}.plist")
 ZH2EN = dict(zip(store.ZH, store.EN))
 
 
@@ -38,6 +40,77 @@ def cmd_set(a):
     if not any(i["id"] == a.id for i in store.load()):
         sys.exit(f"no item {a.id}")
     store.record({"type": "status", "id": a.id, "status": a.status})
+
+
+def ingest():
+    """Add items from JSON files dropped into <home>/inbox/. Returns (added, skipped)."""
+    inbox = store.HOME / "inbox"
+    norm = lambda t: re.sub(r"[\s，。,.;；:：、!！?？\-—]+", "", str(t)).lower()
+    added = skipped = 0
+    for f in sorted(inbox.glob("*.json")) if inbox.exists() else []:
+        try:
+            rows = json.loads(f.read_text())
+            assert isinstance(rows, list)
+        except (ValueError, AssertionError):
+            f.rename(f.with_suffix(".bad"))
+            continue
+        seen = {norm(i["text"]) for i in store.load()}  # includes done and ignored items, so they do not come back
+        for r in rows[:40]:
+            text = store.clean(r.get("text", ""), 500) if isinstance(r, dict) else ""
+            if not text or norm(text) in seen:
+                skipped += 1
+                continue
+            t = str(r.get("time", "")).strip()
+            store.record({"type": "add", "id": store.new_id("m"), "text": text, "status": "待确认",
+                          "source": store.clean(r.get("source", "inbox"), 60) or "inbox",
+                          "time": t if store.valid_time(t) else "", "note": str(r.get("note", "")).strip()[:500]})
+            seen.add(norm(text)); added += 1
+        (inbox / "done").mkdir(parents=True, exist_ok=True)
+        f.rename(inbox / "done" / f.name)
+    return added, skipped
+
+
+def cmd_ingest(a):
+    added, skipped = ingest()
+    if added or a.verbose:
+        print(f"added {added} pending item(s), skipped {skipped} duplicate(s)")
+
+
+def _git(repo, *args):
+    return subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True, timeout=120)
+
+
+def cmd_sync(a):
+    """Sync mode: pull, merge (on the owning machine), commit this machine's files, push."""
+    if store.config()["mode"] != "sync":
+        sys.exit('sync is only for "mode": "sync"')
+    todo, events = store.path("todo_file"), store.path("events_file")
+    here = todo.parent
+    while not here.exists() and here != here.parent:   # the todo folder may not exist yet on a fresh clone
+        here = here.parent
+    top = _git(here, "rev-parse", "--show-toplevel")
+    if top.returncode != 0:
+        sys.exit(f"{todo.parent} is not inside a git repository")
+    repo = pathlib.Path(top.stdout.strip())
+    owner = store.merges_here()
+    if owner:
+        ingest()
+    if _git(repo, "ls-remote", "--heads", "origin").stdout.strip():   # a brand-new remote has nothing to pull yet
+        r = _git(repo, "pull", "--rebase", "--autostash", "-q")
+        if r.returncode != 0:
+            sys.exit("git pull failed: " + r.stderr.strip()[-300:])
+    n = store.merge() if owner else 0
+    mine = [str(events)] + ([str(todo), str(store.path("applied_file"))] if owner else [])
+    _git(repo, "add", "--", *[m for m in mine if pathlib.Path(m).exists()])
+    if _git(repo, "diff", "--cached", "--quiet").returncode != 0:
+        _git(repo, "commit", "-q", "-m", f"today-board: sync from {os.uname().nodename.split('.')[0]}")
+        r = _git(repo, "push", "-q", "-u", "origin", "HEAD")
+        if r.returncode != 0:
+            sys.exit("git push failed: " + r.stderr.strip()[-300:])
+        if a.verbose:
+            print(f"pushed (merged {n} event(s))")
+    elif a.verbose:
+        print("nothing to push")
 
 
 def cmd_merge(a):
@@ -99,12 +172,27 @@ def cmd_install(a):
             time.sleep(0.3)
     else:
         sys.exit(f"service was loaded but {url()} did not answer; see {store.HOME / 'server.log'}")
-    print(f"Today Board is running at {url()}\n  data: {store.HOME}\n  next: today dock\n  after updating the code, run `today install` again")
+    subprocess.run(["launchctl", "bootout", f"gui/{uid}/{SYNC_LABEL}"], capture_output=True)
+    if conf.get("mode") == "sync":
+        env = {"TODAY_BOARD_HOME": str(store.HOME), "PYTHONPATH": str(app), "PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": str(pathlib.Path.home())}
+        with SYNC_PLIST.open("wb") as f:
+            plistlib.dump({"Label": SYNC_LABEL, "ProgramArguments": [sys.executable, "-m", "today_board", "sync"], "WorkingDirectory": str(store.HOME),
+                           "EnvironmentVariables": env, "StartInterval": 300, "RunAtLoad": True,
+                           "StandardOutPath": str(store.HOME / "sync.log"), "StandardErrorPath": str(store.HOME / "sync.log")}, f)
+        r = subprocess.run(["launchctl", "bootstrap", f"gui/{uid}", str(SYNC_PLIST)], capture_output=True, text=True)
+        if r.returncode != 0:
+            sys.exit("could not register the sync timer: " + r.stderr.strip())
+    else:
+        SYNC_PLIST.unlink(missing_ok=True)
+    print(f"Today Board is running at {url()}\n  data: {store.HOME}"
+          + ("\n  sync: every 5 minutes, log in " + str(store.HOME / "sync.log") if conf.get("mode") == "sync" else "")
+          + "\n  next: today dock\n  after updating the code, run `today install` again")
 
 
 def cmd_uninstall(a):
-    subprocess.run(["launchctl", "bootout", f"gui/{os.getuid()}/{LABEL}"], capture_output=True)
-    PLIST.unlink(missing_ok=True)
+    for label, pl in ((LABEL, PLIST), (SYNC_LABEL, SYNC_PLIST)):
+        subprocess.run(["launchctl", "bootout", f"gui/{os.getuid()}/{label}"], capture_output=True)
+        pl.unlink(missing_ok=True)
     print(f"service removed. Your data is still in {store.HOME}")
 
 
@@ -148,6 +236,12 @@ def main(argv=None):
     s = sub.add_parser("merge", help="sync mode: apply recorded events to the Markdown file")
     s.add_argument("-v", "--verbose", action="store_true")
     s.set_defaults(f=cmd_merge)
+    s = sub.add_parser("ingest", help="add items from JSON files in <home>/inbox/ (for agents that cannot run commands)")
+    s.add_argument("-v", "--verbose", action="store_true")
+    s.set_defaults(f=cmd_ingest)
+    s = sub.add_parser("sync", help="sync mode: git pull, merge if this machine owns the list, commit and push")
+    s.add_argument("-v", "--verbose", action="store_true")
+    s.set_defaults(f=cmd_sync)
     sub.add_parser("install", help="run as a background service (macOS launchd)").set_defaults(f=cmd_install)
     sub.add_parser("uninstall", help="stop and remove the background service").set_defaults(f=cmd_uninstall)
     sub.add_parser("dock", help="show the board in the cmux Dock").set_defaults(f=cmd_dock)

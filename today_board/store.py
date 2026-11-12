@@ -8,13 +8,15 @@ The list is one plain Markdown file, so people, scripts and coding agents can al
 
 Everything done on the board is first appended to an event log (one JSON object per line).
 Events are then merged into the Markdown file. In `local` mode that happens right away;
-in `sync` mode another machine does the merge, so a list shared through git never has two writers.
+in `sync` mode every machine appends to its own event file and exactly one machine (`merge_here`)
+merges them all, so a list shared through git never has two writers for the same file.
 """
 import datetime, hashlib, json, os, pathlib, re
 
 HOME = pathlib.Path(os.environ.get("TODAY_BOARD_HOME", "~/.today-board")).expanduser()
 DEFAULTS = {
-    "mode": "local",                 # local: merge at once. sync: only record events, another machine merges.
+    "mode": "local",                 # local: one machine. sync: several machines share the list through a git repo.
+    "merge_here": False,             # sync mode only: true on the one machine that writes todo_file
     "todo_file": "todo.md",          # relative paths are resolved against HOME
     "events_file": "events.jsonl",
     "applied_file": "applied.json",
@@ -113,8 +115,7 @@ def applied_set():
         return set()
 
 
-def all_events():
-    p = path("events_file")
+def _read_events(p):
     out = []
     if p.exists():
         for l in p.read_text().splitlines():
@@ -127,9 +128,21 @@ def all_events():
     return out
 
 
-def pending_events():
+def all_events(everyone=False):
+    """Events recorded on this machine; with everyone=True, events from every machine's file in the same folder."""
+    own = path("events_file")
+    files = sorted(own.parent.glob("*.jsonl")) if everyone and own.parent.exists() else [own]
+    return [e for f in files for e in _read_events(f)]
+
+
+def merges_here():
+    c = config()
+    return c["mode"] == "local" or bool(c.get("merge_here"))
+
+
+def pending_events(everyone=False):
     done = applied_set()
-    return sorted((x for x in all_events() if x[0] not in done), key=lambda x: x[1].get("at", ""))
+    return sorted((x for x in all_events(everyone) if x[0] not in done), key=lambda x: x[1].get("at", ""))
 
 
 def clean(s, limit):
@@ -166,8 +179,8 @@ def apply(items, events):
 
 
 def merge():
-    """Write pending events into the Markdown file and remember them as applied."""
-    ev = pending_events()
+    """Write pending events from every machine into the Markdown file and remember them as applied."""
+    ev = pending_events(everyone=True)
     if not ev:
         return 0
     pre, items = read_todo()
@@ -182,21 +195,23 @@ def merge():
 
 
 def record(event):
-    """Append one event. In local mode, merge immediately so the Markdown file is always current."""
+    """Append one event. On the machine that owns the Markdown file, merge immediately so it is always current."""
     event = dict(event, at=datetime.datetime.now().isoformat(timespec="seconds"))
     p = path("events_file")
     p.parent.mkdir(parents=True, exist_ok=True)
     with p.open("a") as f:
         f.write(json.dumps(event, ensure_ascii=False) + "\n")
-    if config()["mode"] == "local":
+    if merges_here():
         merge()
     return event
 
 
 def new_id(origin="b"):
-    """Unique id: yymmdd + origin letter + running number. b = added on the board, m = added by automation."""
+    """Unique id: yymmdd + origin letter + running number. b = added on the board, m = added by automation.
+    In sync mode give each machine its own letters (config "id_letter") so two machines never mint the same id."""
+    origin = config().get("id_letter", {}).get(origin, origin) if isinstance(config().get("id_letter"), dict) else origin
     day = datetime.date.today().strftime("%y%m%d")
-    used = {i["id"] for i in read_todo()[1]} | {e.get("id") for _, e in all_events()}
+    used = {i["id"] for i in read_todo()[1]} | {e.get("id") for _, e in all_events(everyone=True)}
     n = 1
     while f"{day}-{origin}{n:02d}" in used:
         n += 1
