@@ -1,0 +1,97 @@
+# Today Board
+
+A todo list that lives in the [cmux](https://github.com/manaflow-ai/cmux) Dock: always visible on the right while your agents work on the left.
+
+一个常驻在 cmux 右侧 Dock 里的待办清单。左边是你和 Claude Code、Codex 的对话，右边是今天要做的事。
+
+```
+┌──────────┬───────────────────────────┬──────────────────────────┐
+│ 工作区    │                           │ Today  11月12日 周四      │
+│          │  Claude Code              │ 日程 3  要推进 5  待确认 8 │
+│ ▸ 周报    │                           ├──────────────────────────┤
+│ ▸ 问题归拢 │  > 请帮我处理这件待办…     │ ☐ 统计高影响问题   处理 ▸ │
+│          │                           │ ☐ 跨品类漏召回扫描 处理 ▸ │
+│          │                           │ ☑ 批年假和权限            │
+└──────────┴───────────────────────────┴──────────────────────────┘
+```
+
+## 它解决什么
+
+用 cmux 同时开好几个 agent 干活的时候，“今天到底还有哪些事”通常散落在某个对话里，或者在另一个应用里。Today Board 把它放回眼前：
+
+- **常驻**：挂在 cmux 的全局 Dock 上，切到哪个工作区都在。
+- **待办是主角，对话是工具**：每件事点一下“处理 ▸”，就新开一个以它命名的工作区，agent 已经拿到这件事的背景。一件事一个对话，上下文不串。
+- **机器提的事要你点头**：脚本和 agent 加进来的事项先进“待确认”，你点“确认”才算数，点“忽略”就不再打扰，忽略了还能找回。
+- **就是一个 Markdown 文件**：清单存在 `todo.md` 里，人能读，脚本能写，agent 能改。
+
+## 功能
+
+- 五个视图：日程、要推进、待确认、已完成、已忽略
+- 日程按天分组，同一天时间重叠会标出冲突
+- 点开任意一条可以改内容、填时间、写备注、换状态
+- 搜索，按日期筛选
+- 命令行 `today add`，给定时任务和 agent 往清单里送事项
+- 双机模式：一台机器只记操作，另一台负责合并，经 git 同步时不会两头写同一个文件
+- 只监听 `127.0.0.1`，零第三方依赖，Python 3.9+
+
+## 安装
+
+需要 macOS、Python 3.9 以上，以及带 Dock 的 cmux。
+
+```sh
+git clone <this-repo> today-board
+cd today-board
+ln -s "$PWD/bin/today" ~/.local/bin/today   # 或任何在 PATH 里的目录
+
+today install    # 注册为后台服务，开机自启
+today dock       # 挂到 cmux 的 Dock（先打开 cmux）
+```
+
+数据默认放在 `~/.today-board/`。卸载服务用 `today uninstall`，数据不会被删除。
+
+## 往清单里送事项
+
+```sh
+today add "给客户回邮件"                                   # 进“待确认”
+today add "周会" --status todo --time "2026-11-13 10:00-11:00"
+today add "核对上线工单" --source daily-summary --note "290704"
+today list --status pending --json
+today set 261113-m01 done
+```
+
+怎么让定时任务或 agent 每天自动整理出待办，见 [docs/feeding.md](docs/feeding.md)。
+
+## 文件格式
+
+```markdown
+- [待确认] 261112-m01 | 与 Alex 1:1：稳定性和性价比方向 | daily-summary | 2026-11-12
+  - 时间：2026-11-13 10:00
+  - 备注：他已发总结版
+```
+
+每条一行：`- [状态] 编号 | 内容 | 来源 | 首次出现日期`，下面可以跟缩进的时间和备注。
+状态有五种：待确认、进行中、已完成、已推迟、已取消；也接受英文的 pending、todo、done、later、ignored。
+编号是“六位日期-来源字母和序号”，`m` 是自动加入的，`b` 是在清单上手动加的，两边各自编号不会撞。
+
+## 配置
+
+`~/.today-board/config.json`：
+
+| 键 | 默认 | 说明 |
+| --- | --- | --- |
+| `mode` | `local` | `local` 立刻写进 `todo.md`；`sync` 只记操作，由另一台机器 `today merge` |
+| `todo_file` | `todo.md` | 清单文件，相对路径以数据目录为准 |
+| `events_file` | `events.jsonl` | 操作记录，只追加 |
+| `applied_file` | `applied.json` | 已合并的操作，由执行合并的机器写 |
+| `port` | `8787` | 本机端口 |
+| `agent_command` | `claude` | “处理 ▸”启动的命令，可以换成 `codex` 等 |
+| `agent_cwd` | `~` | 新对话的工作目录 |
+| `status_style` | `zh` | 写文件时用中文还是英文状态 |
+
+## 状态
+
+早期版本，接口可能变。界面目前只有中文。与 cmux 官方没有关联。
+
+## License
+
+MIT

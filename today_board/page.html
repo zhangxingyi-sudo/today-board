@@ -1,0 +1,84 @@
+<!doctype html><html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Today</title><style>
+:root{--bg:#fbfaf8;--fg:#1f1d1a;--mut:#8a857c;--line:#e8e4dc;--acc:#e8703a;--card:#fff;--soft:#f3efe8;--warn:#c8442b}
+@media(prefers-color-scheme:dark){:root{--bg:#1b1a18;--fg:#ece8e1;--mut:#8f897f;--line:#33302b;--acc:#f08a55;--card:#24221f;--soft:#2a2724;--warn:#ef7b62}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.5 -apple-system,"PingFang SC",sans-serif}
+header{position:sticky;top:0;background:var(--bg);padding:12px 14px 0;border-bottom:1px solid var(--line);z-index:2}
+h1{margin:0 0 8px;font-size:17px;display:flex;align-items:baseline;gap:8px}h1 small{color:var(--mut);font-weight:400;font-size:12px}
+.row{display:flex;gap:6px}input[type=search],input[type=text],select,textarea{min-width:0;padding:6px 8px;border:1px solid var(--line);border-radius:7px;background:var(--card);color:var(--fg);font:inherit}
+input[type=search],input[type=text]{flex:1}textarea{width:100%;resize:vertical;min-height:52px}.ed input[type=text]{width:100%}
+.tabs{display:flex;gap:2px;margin-top:10px;overflow-x:auto;scrollbar-width:none}.tab{flex:none;padding:6px 9px 7px;border:0;border-bottom:2px solid transparent;border-radius:0;background:none;color:var(--mut);font-size:13px;cursor:pointer;white-space:nowrap}
+.tab.on{color:var(--fg);border-bottom-color:var(--acc);font-weight:600}.tab b{font-weight:400;color:var(--mut);margin-left:3px}
+main{padding:2px 14px 70px}.it{padding:9px 0;border-bottom:1px solid var(--line)}.top{display:flex;gap:9px;align-items:flex-start}
+.top input[type=checkbox]{margin-top:3px;accent-color:var(--acc);width:15px;height:15px;flex:none}.tx{flex:1;min-width:0;overflow-wrap:anywhere;cursor:pointer}
+.meta{color:var(--mut);font-size:11.5px;margin-top:2px}.note{margin-top:3px;font-size:12.5px;color:var(--mut);border-left:2px solid var(--line);padding-left:7px;white-space:pre-wrap}
+.done .tx>span{color:var(--mut);text-decoration:line-through}.bt{flex:none;display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end}
+button{font:inherit;font-size:12px;padding:3px 9px;border-radius:6px;border:1px solid var(--line);background:var(--card);color:var(--fg);cursor:pointer}
+button.p{border-color:var(--acc);color:var(--acc)}button.go{border-color:transparent;color:var(--mut);padding:3px 6px}button.go:hover{color:var(--acc)}
+.empty{color:var(--mut);padding:18px 0;text-align:center}.tag{color:var(--acc)}.warn{color:var(--warn)}
+.ed{margin:8px 0 2px 24px;padding:9px;background:var(--soft);border-radius:8px;display:grid;gap:7px}.ed label{font-size:11.5px;color:var(--mut)}.ed .bt{justify-content:flex-start}
+h2{font-size:12px;color:var(--mut);margin:16px 0 2px;font-weight:600;letter-spacing:.04em}h2.today{color:var(--acc)}
+.tm{flex:none;width:86px;font-variant-numeric:tabular-nums;font-size:12.5px;padding-top:1px}.tm small{display:block;color:var(--mut);font-size:11px}
+.msg{position:fixed;left:14px;right:14px;bottom:58px;padding:8px 10px;border-radius:8px;background:var(--fg);color:var(--bg);font-size:12.5px;z-index:5}
+footer{position:fixed;bottom:0;left:0;right:0;background:var(--bg);border-top:1px solid var(--line);padding:9px 14px}
+</style></head><body><header><h1>Today <small id="d"></small></h1>
+<div class="row"><input id="q" type="search" placeholder="搜索全部事项…"><select id="f"></select></div><div class="tabs" id="tabs"></div></header>
+<main id="m"></main><div id="msg"></div><footer><form id="add" class="row"><input id="nt" type="text" placeholder="＋ 新增一条要推进的事…"><button class="p">添加</button></form></footer>
+<script>
+let items=[],tab=1,openId=null;const $=s=>document.querySelector(s);
+const pad=n=>String(n).padStart(2,"0"),D=new Date(),TODAY=`${D.getFullYear()}-${pad(D.getMonth()+1)}-${pad(D.getDate())}`;
+const live=i=>i.status!=="已取消";
+const TABS=[["日程",i=>i.time&&live(i)],["要推进",i=>i.status==="进行中"||i.status==="已推迟"],["待确认",i=>i.status==="待确认"],["已完成",i=>i.status==="已完成"],["已忽略",i=>i.status==="已取消"]];
+$("#d").textContent=D.toLocaleDateString("zh-CN",{month:"long",day:"numeric"})+" 周"+"日一二三四五六"[D.getDay()];
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+function say(t){$("#msg").innerHTML=`<div class="msg">${esc(t)}</div>`;setTimeout(()=>$("#msg").innerHTML="",3500)}
+async function post(b){const r=await fetch("/api/event",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(b)});if(!r.ok)say("没有保存成功，请检查格式");await load(true)}
+async function load(force){if(!force&&openId!==null)return;items=await (await fetch("/api/items")).json();
+ const ds=[...new Set(items.map(i=>i.date))].sort().reverse(),cur=$("#f").value;
+ $("#f").innerHTML='<option value="">全部日期</option>'+ds.map(d=>`<option>${d}</option>`).join("");$("#f").value=cur;render()}
+const setS=(id,status)=>{openId=null;post({type:"status",id,status})};
+async function go(id){say("正在打开对话…");const r=await (await fetch("/api/handle",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id})})).json();
+ say(r.ok?(r.reused?"已切到这件事的对话":"已为这件事新开一个对话"):"没有打开："+r.error)}
+function ptime(s){const m=/^(\d{4}-\d{2}-\d{2})(?:\s+(\d{1,2}:\d{2})(?:\s*[–—\-~]\s*(\d{1,2}:\d{2}))?)?$/.exec(s||"");if(!m)return null;
+ const mins=t=>t?(+t.split(":")[0])*60+(+t.split(":")[1]):null;return{day:m[1],a:m[2]||"",b:m[3]||"",s:mins(m[2]),e:mins(m[3])}}
+function save(id){const it=items.find(i=>i.id===id),t=$("#et").value.trim(),n=$("#en").value.trim(),tm=$("#em").value.trim().replace(/\//g,"-");openId=null;
+ const jobs=[];if(t&&t!==it.text)jobs.push({type:"edit",id,text:t});if(n!==(it.note||""))jobs.push({type:"note",id,note:n});if(tm!==(it.time||""))jobs.push({type:"time",id,time:tm});
+ if(!jobs.length)return render();(async()=>{for(const j of jobs)await post(j)})()}
+function editor(i){const mv=[["要推进","进行中"],["待确认","待确认"],["已完成","已完成"],["已忽略","已取消"]].filter(x=>x[1]!==i.status&&!(x[1]==="进行中"&&i.status==="已推迟"));
+ return `<div class="ed"><label>内容</label><textarea id="et">${esc(i.text)}</textarea>
+ <label>时间（有固定时间才填，例如 2026-11-13 10:00 或 2026-11-13 10:00–11:00）</label><input id="em" type="text" value="${esc(i.time||"")}" placeholder="留空表示没有固定时间">
+ <label>备注</label><textarea id="en" placeholder="补充说明、进展、卡在哪…">${esc(i.note||"")}</textarea>
+ <div class="bt"><button class="p" onclick="save('${i.id}')">保存</button><button onclick="openId=null;render()">取消</button></div>
+ <label>移到</label><div class="bt">${mv.map(x=>`<button onclick="setS('${i.id}','${x[1]}')">${x[0]}</button>`).join("")}</div></div>`}
+function row(i,k,extra){const st={"进行中":"","待确认":"待确认","已完成":"已完成","已推迟":"已推迟","已取消":"已忽略"}[i.status];
+ const meta=`<div class="meta">${i.id} · ${esc(i.source)} · ${i.date}${k!==0&&i.time?` · <span class="tag">${esc(i.time.slice(5))}</span>`:''}${(k===0||i.status==="已推迟")&&st?` · <span class="tag">${st}</span>`:''}${i.local?' <span class="tag">· 待同步</span>':''}${extra||''}</div>`;
+ const body=`<div class="tx" onclick="openId=openId==='${i.id}'?null:'${i.id}';render()"><span>${esc(i.text)}</span>${i.note?`<div class="note">${esc(i.note)}</div>`:''}${meta}</div>`;
+ let lead="",act="";const isDone=i.status==="已完成";
+ if(k===1||(k===0&&(i.status==="进行中"||i.status==="已推迟")))lead=`<input type="checkbox" onchange="setS('${i.id}','已完成')">`;
+ if(k===3||(k===0&&isDone))lead=`<input type="checkbox" checked onchange="setS('${i.id}','进行中')">`;
+ if(i.status==="待确认")act=`<div class="bt"><button class="p" onclick="setS('${i.id}','进行中')">确认</button><button onclick="setS('${i.id}','已取消')">忽略</button></div>`;
+ else if(k===4)act=`<div class="bt"><button onclick="setS('${i.id}','待确认')">找回</button></div>`;
+ else if(!isDone)act=`<div class="bt"><button class="go" title="让 Claude 处理这件事" onclick="go('${i.id}')">处理 ▸</button></div>`;
+ return `<div class="it ${isDone?'done':''}"><div class="top">${lead}${body}${act}</div>${openId===i.id?editor(i):''}</div>`}
+function agenda(v){const f=$("#f").value,q=$("#q").value.trim();
+ const arr=v.map(i=>({i,t:ptime(i.time)})).filter(x=>x.t&&(f||q||x.t.day>=TODAY)).sort((a,b)=>(a.t.day+pad(a.t.s??9999)).localeCompare(b.t.day+pad(b.t.s??9999)));
+ if(!arr.length)return `<div class="empty">今天和之后没有带固定时间的事</div>`;
+ const clash=new Set();for(const a of arr)for(const b of arr)if(a!==b&&a.t.day===b.t.day&&a.t.s!==null&&b.t.s!==null&&a.i.status!=="已完成"&&b.i.status!=="已完成"){
+  const ae=a.t.e??a.t.s+1,be=b.t.e??b.t.s+1;if(a.t.s<be&&b.t.s<ae)clash.add(a.i.id)}
+ let out="",day="";const tm=new Date(D.getTime()+864e5),TOM=`${tm.getFullYear()}-${pad(tm.getMonth()+1)}-${pad(tm.getDate())}`;
+ for(const x of arr){if(x.t.day!==day){day=x.t.day;const w="日一二三四五六"[new Date(day+"T00:00").getDay()];
+   out+=`<h2 class="${day===TODAY?'today':''}">${day===TODAY?'今天':day===TOM?'明天':day.slice(5).replace("-","月")+"日"} · 周${w}</h2>`}
+  const t=`<div class="tm">${x.t.a||"全天"}${x.t.b?`<small>到 ${x.t.b}</small>`:''}</div>`;
+  out+=row(x.i,0,clash.has(x.i.id)?' · <span class="warn">⚠ 时间冲突</span>':'').replace('<div class="top">','<div class="top">'+t)}
+ return out}
+function render(){const q=$("#q").value.trim().toLowerCase(),f=$("#f").value;
+ const v=items.filter(i=>(!f||i.date===f)&&(!q||(i.text+i.id+i.source+(i.note||"")+(i.time||"")).toLowerCase().includes(q)));
+ const cnt=(t,k)=>k===0?v.filter(i=>t[1](i)&&(f||q||(ptime(i.time)||{}).day>=TODAY)).length:v.filter(t[1]).length;
+ $("#tabs").innerHTML=TABS.map((t,k)=>`<button class="tab ${k===tab?'on':''}" onclick="tab=${k};openId=null;render()">${t[0]}<b>${cnt(t,k)}</b></button>`).join("");
+ if(tab===0){$("#m").innerHTML=agenda(v.filter(TABS[0][1]));return}
+ const arr=v.filter(TABS[tab][1]);if(tab>=3)arr.sort((a,b)=>(b.changed||"").localeCompare(a.changed||""));
+ $("#m").innerHTML=arr.length?arr.map(i=>row(i,tab)).join(""):`<div class="empty">${q||f?'没有符合条件的事项':'这里是空的'}</div>`}
+$("#q").oninput=render;$("#f").onchange=render;
+$("#add").onsubmit=e=>{e.preventDefault();const t=$("#nt").value.trim();if(!t)return;$("#nt").value="";tab=1;post({type:"add",text:t})};
+load(true);setInterval(()=>load(false),30000);
+</script></body></html>
