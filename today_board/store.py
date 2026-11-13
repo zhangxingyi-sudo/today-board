@@ -149,6 +149,138 @@ def clean(s, limit):
     return re.sub(r"\s+", " ", str(s)).replace("|", "｜").strip()[:limit]
 
 
+_CN_DIGITS = {"零": 0, "〇": 0, "一": 1, "二": 2, "两": 2, "三": 3, "四": 4,
+              "五": 5, "六": 6, "七": 7, "八": 8, "九": 9}
+_WEEKDAYS = {"一": 0, "二": 1, "三": 2, "四": 3, "五": 4, "六": 5, "日": 6, "天": 6,
+             "1": 0, "2": 1, "3": 2, "4": 3, "5": 4, "6": 5, "7": 6}
+_PERIOD_HOUR = {"凌晨": 5, "早上": 9, "早晨": 9, "上午": 9, "中午": 12,
+                "下午": 14, "晚上": 19, "晚间": 19, "夜里": 21}
+_PERIODS = "凌晨|早上|早晨|上午|中午|下午|晚上|晚间|夜里"
+
+
+def _num(s):
+    """Read a small Arabic or Chinese number: 3, 十, 十一, 二十三."""
+    s = str(s)
+    if s.isdigit():
+        return int(s)
+    if s == "十":
+        return 10
+    if "十" in s:
+        a, b = s.split("十", 1)
+        return _CN_DIGITS.get(a, 1) * 10 + (_CN_DIGITS.get(b, 0) if b else 0)
+    return _CN_DIGITS.get(s, 0)
+
+
+def _mins(s):
+    if not s:
+        return 0
+    if s.startswith("半"):
+        return 30
+    return int(re.sub(r"\D", "", s) or 0)
+
+
+def _clock(hour, minute, period):
+    h = _num(hour)
+    if period in ("下午", "晚上", "晚间", "夜里") and h < 12:
+        h += 12
+    elif period == "中午" and h < 11:
+        h += 12
+    elif period == "凌晨" and h == 12:
+        h = 0
+    return f"{h % 24:02d}:{int(minute):02d}"
+
+
+def parse_when(text, now=None):
+    """Read a day and a time out of free text, in the form the file stores.
+
+    "今天下午过一下订单"     -> "2026-11-13 14:00"
+    "周六 10:00 开会"       -> "2026-11-14 10:00"
+    "明天"                   -> "2026-11-14"
+    Returns "" when the text carries no date and no time.
+    """
+    s = str(text).replace("今晚", "今天晚上").replace("明晚", "明天晚上")
+    s = s.replace("今早", "今天早上").replace("明早", "明天早上")
+    now = now or datetime.datetime.now()
+    today = now.date()
+    day = None
+
+    m = re.search(r"(20\d{2})[-/年.](\d{1,2})[-/月.](\d{1,2})[日号]?", s)
+    if m:
+        try:
+            day = datetime.date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+        except ValueError:
+            day = None
+    if day is None:
+        m = re.search(r"(?<!\d)(\d{1,2})月(\d{1,2})[日号]", s)
+        if m:
+            try:
+                day = datetime.date(today.year, int(m.group(1)), int(m.group(2)))
+            except ValueError:
+                day = None
+            if day and day < today - datetime.timedelta(days=180):
+                try:
+                    day = day.replace(year=today.year + 1)
+                except ValueError:
+                    pass
+    if day is None:
+        if "大后天" in s:
+            day = today + datetime.timedelta(days=3)
+        elif "后天" in s:
+            day = today + datetime.timedelta(days=2)
+        elif any(w in s for w in ("明天", "明日", "明儿", "明晨")):
+            day = today + datetime.timedelta(days=1)
+        elif any(w in s for w in ("今天", "今日", "今儿", "今晨")):
+            day = today
+    if day is None:
+        m = re.search(r"(下下|下个?|这|本)?\s*(?:周|星期|礼拜)\s*([一二三四五六日天1-7])", s)
+        if m:
+            delta = (_WEEKDAYS[m.group(2)] - today.weekday()) % 7
+            if m.group(1) in ("下", "下个"):
+                delta += 7
+            elif m.group(1) == "下下":
+                delta += 14
+            elif m.group(1) in ("这", "本"):
+                delta = _WEEKDAYS[m.group(2)] - today.weekday()
+            day = today + datetime.timedelta(days=delta)
+
+    def period_before(pos):
+        found = re.search(rf"({_PERIODS})\s*$", s[:pos])
+        return found.group(1) if found else None
+
+    clock = ""
+    m = re.search(r"(?<!\d)(\d{1,2})[:：](\d{2})\s*[-–—~至到]\s*(\d{1,2})[:：](\d{2})", s)
+    if m:
+        p = period_before(m.start())
+        clock = _clock(m.group(1), m.group(2), p) + "–" + _clock(m.group(3), m.group(4), p)
+    else:
+        m = re.search(r"(?<!\d)(\d{1,2})[:：](\d{2})(?!\d)", s)
+        if m:
+            clock = _clock(m.group(1), m.group(2), period_before(m.start()))
+    if not clock:
+        m = re.search(rf"({_PERIODS})?\s*(\d{{1,2}}|[一二两三四五六七八九十]{{1,3}})\s*点\s*(半|\d{{1,2}}分?)?"
+                      rf"\s*(?:[-–—~]|到|至)\s*({_PERIODS})?\s*(\d{{1,2}}|[一二两三四五六七八九十]{{1,3}})\s*点\s*(半|\d{{1,2}}分?)?", s)
+        if m:
+            p1 = m.group(1) or period_before(m.start())
+            p2 = m.group(4) or p1
+            clock = _clock(m.group(2), _mins(m.group(3)), p1) + "–" + _clock(m.group(5), _mins(m.group(6)), p2)
+    if not clock:
+        m = re.search(rf"({_PERIODS})?\s*(\d{{1,2}}|[一二两三四五六七八九十]{{1,3}})\s*点\s*(半|\d{{1,2}}分?)?", s)
+        if m:
+            p = m.group(1) or period_before(m.start())
+            # 「一点」单说不带上午/下午/分钟，多半是「差一点」，不当成时间
+            if p or m.group(3) or str(m.group(2)) != "一":
+                clock = _clock(m.group(2), _mins(m.group(3)), p)
+    if not clock:
+        m = re.search(rf"({_PERIODS})", s)
+        if m:
+            clock = f"{_PERIOD_HOUR[m.group(1)]:02d}:00"
+
+    if day is None and not clock:
+        return ""
+    day = day or today
+    return f"{day.isoformat()} {clock}" if clock else day.isoformat()
+
+
 def apply(items, events):
     """Apply events to items in place. Returns how many took effect."""
     by, n = {i["id"]: i for i in items}, 0
@@ -197,6 +329,9 @@ def merge():
 def record(event):
     """Append one event. On the machine that owns the Markdown file, merge immediately so it is always current."""
     event = dict(event, at=datetime.datetime.now().isoformat(timespec="seconds"))
+    if (event.get("type") == "add" and not str(event.get("time", "")).strip()
+            and str(event.get("source", "manual")) in ("manual", "cli")):
+        event["time"] = parse_when(event.get("text", ""))
     p = path("events_file")
     p.parent.mkdir(parents=True, exist_ok=True)
     with p.open("a") as f:

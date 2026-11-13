@@ -23,7 +23,7 @@ h2{font-size:12px;color:var(--mut);margin:16px 0 2px;font-weight:600;letter-spac
 footer{position:fixed;bottom:0;left:0;right:0;background:var(--bg);border-top:1px solid var(--line);padding:9px 14px}
 </style></head><body><header><h1>Today <small id="d"></small></h1>
 <div class="row"><input id="q" type="search" placeholder="搜索全部事项…"><select id="f"></select></div><div class="tabs" id="tabs"></div></header>
-<main id="m"></main><div id="msg"></div><footer><form id="add" class="row"><input id="nt" type="text" placeholder="＋ 新增一条要推进的事…"><button class="p">添加</button></form></footer>
+<main id="m"></main><div id="msg"></div><footer><form id="add" class="row"><input id="nt" type="text" placeholder="＋ 新增一条…（“明天下午3点”会识别时间）"><button class="p">添加</button></form></footer>
 <script>
 let items=[],tab=1,openId=null;const $=s=>document.querySelector(s);
 const pad=n=>String(n).padStart(2,"0"),D=new Date(),TODAY=`${D.getFullYear()}-${pad(D.getMonth()+1)}-${pad(D.getDate())}`;
