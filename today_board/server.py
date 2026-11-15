@@ -25,7 +25,7 @@ def handle(item):
     if ref and ref in cmux("workspace", "list").stdout:
         cmux("workspace", "select", ref)
         return {"ok": True, "workspace": ref, "reused": True}
-    prompt = (f"请帮我处理这件待办。\n\n编号：{item['id']}\n内容：{item['text']}\n来源：{item['source']}（{item['date']}）"
+    prompt = (f"请帮我处理这件待办。\n\n编号：{item['id']}\n项目：{item.get('project') or '未归类'}\n内容：{item['text']}\n来源：{item['source']}（{item['date']}）"
               + (f"\n时间：{item['time']}" if item.get("time") else "") + (f"\n备注：{item['note']}" if item.get("note") else "")
               + "\n\n先用两三句话说明你对这件事的理解和打算怎么做，需要我补充什么就问我，等我确认后再动手。")
     pf = data / "prompts" / f"{item['id']}.txt"
@@ -58,6 +58,8 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/api/items":
             self._send(200, json.dumps(store.load(), ensure_ascii=False))
+        elif self.path == "/api/projects":
+            self._send(200, json.dumps(list(store.projects()), ensure_ascii=False))
         elif self.path in ("/", "/sidebar"):
             self._send(200, PAGE.read_text(), "text/html")
         else:
@@ -103,6 +105,9 @@ class Handler(BaseHTTPRequestHandler):
                 elif t == "time":
                     rec["time"] = str(e["time"]).strip()
                     assert store.valid_time(rec["time"])
+                elif t == "project":
+                    rec["project"] = str(e.get("project") or "").strip()
+                    assert rec["project"] in ("",) + store.projects()
                 else:
                     raise ValueError(t)
         except (AssertionError, KeyError, ValueError, TypeError):

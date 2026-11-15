@@ -21,8 +21,11 @@ def cmd_serve(a):
 def cmd_add(a):
     if a.time and not store.valid_time(a.time):
         sys.exit("time must look like 2026-11-13, 2026-11-13 10:00 or 2026-11-13 10:00-11:00")
+    project = (a.project or "").strip()
+    if project and project not in store.projects():
+        sys.exit("unknown project: " + project + "\nknown: " + ("、".join(store.projects()) or "(none configured)"))
     e = store.record({"type": "add", "id": store.new_id(a.origin), "text": a.text, "source": a.source,
-                      "status": a.status, "time": a.time or "", "note": a.note or ""})
+                      "status": a.status, "time": a.time or "", "note": a.note or "", "project": project})
     print(e["id"])
 
 
@@ -40,6 +43,15 @@ def cmd_set(a):
     if not any(i["id"] == a.id for i in store.load()):
         sys.exit(f"no item {a.id}")
     store.record({"type": "status", "id": a.id, "status": a.status})
+
+
+def cmd_project(a):
+    if not any(i["id"] == a.id for i in store.load()):
+        sys.exit(f"no item {a.id}")
+    name = "" if a.name == "-" else a.name.strip()
+    if name and name not in store.projects():
+        sys.exit("unknown project: " + name + "\nknown: " + ("、".join(store.projects()) or "(none configured)"))
+    store.record({"type": "project", "id": a.id, "project": name})
 
 
 def ingest():
@@ -61,9 +73,13 @@ def ingest():
                 skipped += 1
                 continue
             t = str(r.get("time", "")).strip()
+            project = str(r.get("project", "")).strip()
+            if project not in store.projects():
+                project = ""
             store.record({"type": "add", "id": store.new_id("m"), "text": text, "status": "待确认",
                           "source": store.clean(r.get("source", "inbox"), 60) or "inbox",
-                          "time": t if store.valid_time(t) else "", "note": str(r.get("note", "")).strip()[:500]})
+                          "time": t if store.valid_time(t) else "", "note": str(r.get("note", "")).strip()[:500],
+                          "project": project})
             seen.add(norm(text)); added += 1
         (inbox / "done").mkdir(parents=True, exist_ok=True)
         f.rename(inbox / "done" / f.name)
@@ -223,6 +239,7 @@ def main(argv=None):
     s.add_argument("--source", default="cli", help="where it came from, shown on the board")
     s.add_argument("--time", help='fixed time, e.g. "2026-11-13 10:00-11:00"')
     s.add_argument("--note")
+    s.add_argument("--project", default="", help="which project this belongs to")
     s.add_argument("--origin", default="m", help="one letter used in the id (default m = machine)")
     s.set_defaults(f=cmd_add)
     s = sub.add_parser("list", help="print items")
@@ -233,6 +250,10 @@ def main(argv=None):
     s.add_argument("id")
     s.add_argument("status", choices=store.EN)
     s.set_defaults(f=cmd_set)
+    s = sub.add_parser("project", help="set which project an existing item belongs to")
+    s.add_argument("id")
+    s.add_argument("name", help="a known project name, or - to clear it")
+    s.set_defaults(f=cmd_project)
     s = sub.add_parser("merge", help="sync mode: apply recorded events to the Markdown file")
     s.add_argument("-v", "--verbose", action="store_true")
     s.set_defaults(f=cmd_merge)

@@ -37,7 +37,7 @@ today add "季度评审" --time "2026-11-20 14:00-15:00" --source calendar
 
 ```json
 [
-  {"text": "回复法务关于合同第 3 条的问题", "source": "inbox-summary"},
+  {"text": "回复法务关于合同第 3 条的问题", "source": "inbox-summary", "project": "项目甲"},
   {"text": "季度评审", "source": "calendar", "time": "2026-11-20 14:00–15:00", "note": "带上数据"}
 ]
 ```

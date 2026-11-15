@@ -3,6 +3,7 @@
 The list is one plain Markdown file, so people, scripts and coding agents can all read and write it:
 
     - [待确认] 261112-m01 | Review the Q4 plan | daily-summary | 2026-11-12
+      - 项目：项目甲
       - 时间：2026-11-13 10:00–11:00
       - 备注：waiting on numbers from finance
 
@@ -25,13 +26,14 @@ DEFAULTS = {
     "agent_cwd": "~",
     "cmux": "/Applications/cmux.app/Contents/Resources/bin/cmux",
     "status_style": "zh",            # how statuses are written to the file: zh or en
+    "projects": [],                  # local names for the project dropdown; not shipped with the app
 }
 ZH = ("待确认", "进行中", "已完成", "已推迟", "已取消")
 EN = ("pending", "todo", "done", "later", "ignored")
 TO_ZH = {**{z: z for z in ZH}, **dict(zip(EN, ZH))}
 ID = r"\d{6}-[a-z]\d{2,}"
 LINE = re.compile(rf"^- \[(?P<status>[^\]]+)\]\s*(?P<id>{ID})\s*\|\s*(?P<text>.*?)\s*\|\s*(?P<source>[^|]*?)\s*\|\s*(?P<date>\d{{4}}-\d{{2}}-\d{{2}})\s*$")
-SUB = re.compile(r"^\s+- (?P<k>时间|备注|time|note)[:：]\s*(?P<v>.*)$", re.I)
+SUB = re.compile(r"^\s+- (?P<k>时间|备注|项目|time|note|project)[:：]\s*(?P<v>.*)$", re.I)
 TIME = re.compile(r"^(\d{4}-\d{2}-\d{2})(?:\s+(\d{1,2}:\d{2})(?:\s*[–—\-~]\s*(\d{1,2}:\d{2}))?)?$")
 
 
@@ -44,6 +46,21 @@ def config():
     return c
 
 
+def projects():
+    """Project names from this machine's config. The public source does not carry anyone's list."""
+    raw = config().get("projects") or []
+    if isinstance(raw, str):
+        raw = raw.replace("，", ",").split(",")
+    if not isinstance(raw, (list, tuple)):
+        return ()
+    out = []
+    for name in raw:
+        name = str(name).strip()
+        if name and name not in out:
+            out.append(name[:40])
+    return tuple(out)
+
+
 def path(key):
     p = pathlib.Path(str(config()[key])).expanduser()
     return p if p.is_absolute() else HOME / p
@@ -54,14 +71,17 @@ def parse(text):
     for l in text.splitlines():
         m = LINE.match(l)
         if m:
-            cur = dict(m.groupdict(), note="", time="")
+            cur = dict(m.groupdict(), note="", time="", project="")
             cur["status"] = TO_ZH.get(cur["status"].strip().lower(), TO_ZH.get(cur["status"].strip(), "待确认"))
             items.append(cur)
             continue
         s = SUB.match(l)
         if s and cur is not None:
-            if s.group("k").lower() in ("时间", "time"):
+            key = s.group("k").lower()
+            if key in ("时间", "time"):
                 cur["time"] = s.group("v").strip()
+            elif key in ("项目", "project"):
+                cur["project"] = s.group("v").strip()
             else:
                 cur["note"] = (cur["note"] + "\n" + s.group("v")).strip()
             continue
@@ -75,7 +95,7 @@ def parse(text):
 def render(pre, items):
     en = config()["status_style"] == "en"
     st = dict(zip(ZH, EN)) if en else {z: z for z in ZH}
-    kt, kn = ("time", "note") if en else ("时间", "备注")
+    kt, kn, kp = ("time", "note", "project") if en else ("时间", "备注", "项目")
     sep = ": " if en else "："
     out = list(pre) or ["# Todo", ""]
     while out and not out[-1].strip():
@@ -83,6 +103,8 @@ def render(pre, items):
     out.append("")
     for i in items:
         out.append(f"- [{st[i['status']]}] {i['id']} | {i['text']} | {i['source']} | {i['date']}")
+        if i.get("project"):
+            out.append(f"  - {kp}{sep}{i['project']}")
         if i.get("time"):
             out.append(f"  - {kt}{sep}{i['time']}")
         for n in (i.get("note") or "").splitlines():
@@ -290,7 +312,8 @@ def apply(items, events):
             if e.get("id") and e["id"] not in by:
                 it = {"id": e["id"], "status": TO_ZH.get(e.get("status", "进行中"), "进行中"), "text": clean(e.get("text", ""), 500),
                       "source": clean(e.get("source", "manual"), 60) or "manual", "date": e.get("at", "")[:10] or datetime.date.today().isoformat(),
-                      "note": str(e.get("note", "")).strip(), "time": e.get("time", "") if valid_time(e.get("time", "")) else ""}
+                      "note": str(e.get("note", "")).strip(), "time": e.get("time", "") if valid_time(e.get("time", "")) else "",
+                      "project": str(e.get("project") or "").strip() if str(e.get("project") or "").strip() in projects() else ""}
                 items.append(it); by[it["id"]] = it; it["touched"] = True; n += 1
             continue
         it = by.get(e.get("id"))
@@ -304,6 +327,8 @@ def apply(items, events):
             it["note"] = str(e.get("note", "")).strip()[:2000]
         elif t == "time" and valid_time(e.get("time", "")):
             it["time"] = e["time"].strip()
+        elif t == "project" and str(e.get("project") or "").strip() in ("",) + projects():
+            it["project"] = str(e.get("project") or "").strip()
         else:
             continue
         it["touched"] = True; n += 1

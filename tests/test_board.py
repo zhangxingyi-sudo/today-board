@@ -70,6 +70,19 @@ class BoardTest(unittest.TestCase):
         self.assertEqual(shown["status"], "已完成")
         self.assertFalse(shown["local"])
 
+    def test_project_stays_out_of_the_note(self):
+        self.write_config(mode="local", projects=["work", "home"])
+        store.record({"type": "add", "id": "261112-m01", "text": "准备评审材料", "source": "cli",
+                      "status": "待确认", "project": "work"})
+        text = store.path("todo_file").read_text(encoding="utf-8")
+        self.assertIn("项目：work", text)
+        item = next(i for i in store.load() if i["id"] == "261112-m01")
+        self.assertEqual(item["project"], "work")
+        self.assertEqual(item["note"], "")
+        store.record({"type": "project", "id": "261112-m01", "project": "home"})
+        item = next(i for i in store.load() if i["id"] == "261112-m01")
+        self.assertEqual(item["project"], "home")
+
 
 if __name__ == "__main__":
     unittest.main()
