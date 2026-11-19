@@ -4,8 +4,11 @@
 @media(prefers-color-scheme:dark){:root{--bg:#1b1a18;--fg:#ece8e1;--mut:#8f897f;--line:#33302b;--acc:#f08a55;--card:#24221f;--soft:#2a2724;--warn:#ef7b62}}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.5 -apple-system,"PingFang SC",sans-serif}
 header{position:sticky;top:0;background:var(--bg);padding:12px 14px 0;border-bottom:1px solid var(--line);z-index:2}
-h1{margin:0 0 8px;font-size:17px;display:flex;align-items:baseline;gap:8px}h1 small{color:var(--mut);font-weight:400;font-size:12px}
-.row{display:flex;gap:6px}input[type=search],input[type=text],select,textarea{min-width:0;padding:6px 8px;border:1px solid var(--line);border-radius:7px;background:var(--card);color:var(--fg);font:inherit}
+h1{margin:0 0 8px;font-size:17px;display:flex;align-items:center;justify-content:space-between;gap:8px}
+h1 .ttl{display:flex;align-items:baseline;gap:8px}h1 small{color:var(--mut);font-weight:400;font-size:12px}
+.hdr-btn{font-size:11.5px;padding:2px 8px;color:var(--mut)}
+.hdr-btn:hover{border-color:var(--acc);color:var(--acc)}
+.row{display:flex;gap:6px;align-items:center}input[type=search],input[type=text],select,textarea{min-width:0;padding:6px 8px;border:1px solid var(--line);border-radius:7px;background:var(--card);color:var(--fg);font:inherit}
 input[type=search],input[type=text]{flex:1}textarea{width:100%;resize:vertical;min-height:52px}.ed input[type=text]{width:100%}
 .tabs{display:flex;gap:2px;margin-top:10px;overflow-x:auto;scrollbar-width:none}.tab{flex:none;padding:6px 9px 7px;border:0;border-bottom:2px solid transparent;border-radius:0;background:none;color:var(--mut);font-size:13px;cursor:pointer;white-space:nowrap}
 .tab.on{color:var(--fg);border-bottom-color:var(--acc);font-weight:600}.tab b{font-weight:400;color:var(--mut);margin-left:3px}
@@ -14,37 +17,143 @@ main{padding:2px 14px 70px}.it{padding:9px 0;border-bottom:1px solid var(--line)
 .meta{color:var(--mut);font-size:11.5px;margin-top:2px}.note{margin-top:3px;font-size:12.5px;color:var(--mut);border-left:2px solid var(--line);padding-left:7px;white-space:pre-wrap}
 .done .tx>span{color:var(--mut);text-decoration:line-through}.bt{flex:none;display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end}
 button{font:inherit;font-size:12px;padding:3px 9px;border-radius:6px;border:1px solid var(--line);background:var(--card);color:var(--fg);cursor:pointer}
-button.p{border-color:var(--acc);color:var(--acc)}button.go{border-color:transparent;color:var(--mut);padding:3px 6px}button.go:hover{color:var(--acc)}
+button.p{border-color:var(--acc);color:var(--acc)}button.danger{border-color:var(--warn);color:var(--warn)}
+button.go{border-color:transparent;color:var(--mut);padding:3px 6px}button.go:hover{color:var(--acc)}
 .empty{color:var(--mut);padding:18px 0;text-align:center}.tag{color:var(--acc)}.warn{color:var(--warn)}
 .ed{margin:8px 0 2px 24px;padding:9px;background:var(--soft);border-radius:8px;display:grid;gap:7px}.ed label{font-size:11.5px;color:var(--mut)}.ed .bt{justify-content:flex-start}
 h2{font-size:12px;color:var(--mut);margin:16px 0 2px;font-weight:600;letter-spacing:.04em}h2.today{color:var(--acc)}
 .tm{flex:none;width:86px;font-variant-numeric:tabular-nums;font-size:12.5px;padding-top:1px}.tm small{display:block;color:var(--mut);font-size:11px}
 select.pcat{width:auto;max-width:8.5em;margin:0 6px 0 0;padding:0 2px;border-color:transparent;border-radius:4px;background:var(--soft);color:var(--acc);font-size:11px;line-height:1.6;vertical-align:1px}
-.msg{position:fixed;left:14px;right:14px;bottom:58px;padding:8px 10px;border-radius:8px;background:var(--fg);color:var(--bg);font-size:12.5px;z-index:5}
-footer{position:fixed;bottom:0;left:0;right:0;background:var(--bg);border-top:1px solid var(--line);padding:9px 14px}
-</style></head><body><header><h1>Today <small id="d"></small></h1>
+#np{flex:0 1 auto;max-width:6.8em;padding:6px 4px;font-size:12px;color:var(--mut)}
+#np.on{color:var(--acc);border-color:var(--acc)}
+.msg{position:fixed;left:14px;right:14px;bottom:58px;padding:8px 10px;border-radius:8px;background:var(--fg);color:var(--bg);font-size:12.5px;z-index:20}
+footer{position:fixed;bottom:0;left:0;right:0;background:var(--bg);border-top:1px solid var(--line);padding:9px 14px;z-index:2}
+.mask{position:fixed;inset:0;background:rgba(0,0,0,.38);display:flex;align-items:flex-start;justify-content:center;padding:54px 12px 16px;z-index:10}
+.dlg{width:100%;max-width:380px;max-height:calc(100vh - 80px);display:flex;flex-direction:column;background:var(--bg);border:1px solid var(--line);border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.22);overflow:hidden}
+.dlg-hd{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-bottom:1px solid var(--line);font-weight:600;font-size:14px}
+.dlg-bd{padding:10px 12px;overflow-y:auto;display:grid;gap:8px}
+.pm-row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid var(--line)}
+.pm-row:last-child{border-bottom:0}
+.pm-nm{flex:1;min-width:0;overflow-wrap:anywhere}.pm-nm small{color:var(--mut);font-size:11.5px;margin-left:5px}
+.pm-cf{display:grid;gap:6px;width:100%}.pm-cf .hint{font-size:12px;color:var(--mut)}
+</style></head><body><header><h1><span class="ttl">Today <small id="d"></small></span><button type="button" class="hdr-btn" onclick="openPM()">项目管理</button></h1>
 <div class="row"><input id="q" type="search" placeholder="搜索全部事项…"><select id="p"></select><select id="f"></select></div><div class="tabs" id="tabs"></div></header>
-<main id="m"></main><div id="msg"></div><footer><form id="add" class="row"><input id="nt" type="text" placeholder="＋ 新增一条…（“明天下午3点”会识别时间）"><button class="p">添加</button></form></footer>
+<main id="m"></main><div id="modal"></div><div id="msg"></div><footer><form id="add" class="row"><select id="np" title="归属项目"></select><input id="nt" type="text" placeholder="＋ 新增一条…（“明天下午3点”会识别时间）"><button class="p">添加</button></form></footer>
 <script>
-let PROJECTS=[],items=[],tab=1,openId=null;const $=s=>document.querySelector(s);
+const NEW_OPT="__new__";
+let PROJECTS=[],items=[],tab=1,openId=null,newProj="",pmOpen=false,pmEditIdx=null,pmDelIdx=null,npTarget=null;
+const $=s=>document.querySelector(s);
 const pad=n=>String(n).padStart(2,"0"),D=new Date(),TODAY=`${D.getFullYear()}-${pad(D.getMonth()+1)}-${pad(D.getDate())}`;
 const live=i=>i.status!=="已取消";
 const TABS=[["日程",i=>i.time&&live(i)],["要推进",i=>i.status==="进行中"||i.status==="已推迟"],["待确认",i=>i.status==="待确认"],["已完成",i=>i.status==="已完成"],["已忽略",i=>i.status==="已取消"]];
 $("#d").textContent=D.toLocaleDateString("zh-CN",{month:"long",day:"numeric"})+" 周"+"日一二三四五六"[D.getDay()];
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const cleanProj=s=>String(s||"").replace(/[|、,，]+/g," ").replace(/\s+/g," ").trim().slice(0,40);
 function say(t){$("#msg").innerHTML=`<div class="msg">${esc(t)}</div>`;setTimeout(()=>$("#msg").innerHTML="",3500)}
 async function post(b){const r=await fetch("/api/event",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(b)});if(!r.ok)say("没有保存成功，请检查格式");await load(true)}
-async function load(force){if(!force&&openId!==null)return;
+function syncAddProj(){
+ const list=newProj&&!PROJECTS.includes(newProj)?[...PROJECTS,newProj]:PROJECTS;
+ $("#np").innerHTML='<option value="">未归类</option>'+list.map(p=>`<option value="${esc(p)}">${esc(p)}</option>`).join("")+`<option value="${NEW_OPT}">＋ 新建…</option>`;
+ $("#np").value=list.includes(newProj)?newProj:"";
+ $("#np").classList.toggle("on",!!$("#np").value);
+}
+async function load(force){if(!force&&(openId!==null||pmOpen||npTarget!==null))return;
  const [list,names]=await Promise.all([fetch("/api/items").then(r=>r.json()),fetch("/api/projects").then(r=>r.json())]);
  items=list;if(Array.isArray(names))PROJECTS=names;
  const ds=[...new Set(items.map(i=>i.date))].sort().reverse(),cur=$("#f").value,pcur=$("#p").value;
  $("#f").innerHTML='<option value="">全部日期</option>'+ds.map(d=>`<option>${d}</option>`).join("");$("#f").value=cur;
- $("#p").innerHTML='<option value="">筛选项目</option>'+PROJECTS.map(p=>`<option>${p}</option>`).join("");
- $("#p").value=PROJECTS.includes(pcur)?pcur:"";render()}
+ $("#p").innerHTML='<option value="">筛选项目</option>'+PROJECTS.map(p=>`<option value="${esc(p)}">${esc(p)}</option>`).join("");
+ $("#p").value=PROJECTS.includes(pcur)?pcur:"";
+ if(newProj&&!PROJECTS.includes(newProj))newProj="";
+ syncAddProj();render();if(pmOpen||npTarget)renderModal()}
 const setS=(id,status)=>{openId=null;post({type:"status",id,status})};
-function setP(id,project){const it=items.find(i=>i.id===id);if(it&&(it.project||"")===project)return;post({type:"project",id,project})}
-function projectSelect(i,cls){const cur=i.project||"";
- return `<select class="${cls}" onclick="event.stopPropagation()" onmousedown="event.stopPropagation()" onchange="setP('${i.id}',this.value)"><option value="">未归类</option>${PROJECTS.map(p=>`<option value="${esc(p)}"${p===cur?" selected":""}>${esc(p)}</option>`).join("")}</select>`}
+function onItemProj(id,el){
+ const it=items.find(i=>i.id===id),prev=(it&&it.project)||"";
+ if(el.value===NEW_OPT){el.value=prev;openNewProj({kind:"item",id});return}
+ if(prev===el.value)return;
+ post({type:"project",id,project:el.value});
+}
+function projectSelect(i,cls){
+ const cur=i.project||"",list=cur&&!PROJECTS.includes(cur)?[...PROJECTS,cur]:PROJECTS;
+ return `<select class="${cls}" onclick="event.stopPropagation()" onmousedown="event.stopPropagation()" onchange="onItemProj('${i.id}',this)"><option value="">未归类</option>${list.map(p=>`<option value="${esc(p)}"${p===cur?" selected":""}>${esc(p)}</option>`).join("")}<option value="${NEW_OPT}">＋ 新建项目…</option></select>`}
+function openNewProj(target){npTarget=target;renderModal();setTimeout(()=>$("#np-in")?.focus(),0)}
+function closeModal(){if(npTarget){npTarget=null}else{pmOpen=false;pmEditIdx=null;pmDelIdx=null}renderModal()}
+async function submitNewProj(e){
+ e.preventDefault();
+ const name=cleanProj($("#np-in").value);
+ if(!name){say("请输入项目名称");return}
+ const tgt=npTarget;npTarget=null;renderModal();
+ if(tgt.kind==="item"){
+  await post({type:"project",id:tgt.id,project:name});
+  say(`已归类到「${name}」`);
+ }else if(tgt.kind==="addbar"){
+  newProj=name;
+  await post({type:"project_add",name});
+  newProj=name;syncAddProj();
+  say(`已新建项目「${name}」`);
+ }else{
+  await post({type:"project_add",name});
+  say(`已新建项目「${name}」`);
+ }
+}
+function openPM(){pmOpen=true;pmEditIdx=null;pmDelIdx=null;renderModal();setTimeout(()=>$("#pm-new")?.focus(),0)}
+async function pmAdd(e){
+ e.preventDefault();
+ const inp=$("#pm-new"),name=cleanProj(inp.value);
+ if(!name){say("请输入项目名称");return}
+ if(PROJECTS.includes(name)){say(`项目「${name}」已存在`);inp.select();return}
+ inp.value="";
+ await post({type:"project_add",name});
+ say(`已新建项目「${name}」`);
+ setTimeout(()=>$("#pm-new")?.focus(),0);
+}
+function pmStartRename(idx){pmDelIdx=null;pmEditIdx=idx;renderModal();setTimeout(()=>{const el=$("#pm-ren");if(el){el.focus();el.select()}},0)}
+async function pmSaveRename(e,idx){
+ e.preventDefault();
+ const oldName=PROJECTS[idx],newName=cleanProj($("#pm-ren").value);
+ if(!oldName||!newName){say("项目名称不能为空");return}
+ if(newName===oldName){pmEditIdx=null;renderModal();return}
+ const wasFilter=$("#p").value===oldName,wasAdd=newProj===oldName;
+ pmEditIdx=null;
+ await post({type:"project_rename",old:oldName,new:newName});
+ if(wasFilter)$("#p").value=newName;
+ if(wasAdd){newProj=newName;syncAddProj()}
+ render();
+ say(`已将「${oldName}」改为「${newName}」`);
+}
+function pmStartDelete(idx){pmEditIdx=null;pmDelIdx=idx;renderModal()}
+async function pmConfirmDelete(idx){
+ const name=PROJECTS[idx];if(!name)return;
+ const wasFilter=$("#p").value===name,wasAdd=newProj===name;
+ pmDelIdx=null;
+ await post({type:"project_delete",name});
+ if(wasFilter)$("#p").value="";
+ if(wasAdd){newProj="";syncAddProj()}
+ render();
+ say(`已删除项目「${name}」`);
+}
+function renderModal(){
+ const box=$("#modal");
+ if(npTarget){
+  const ttl=npTarget.kind==="item"?"新建项目并归类":"新建项目";
+  box.innerHTML=`<div class="mask" onclick="if(event.target===this)closeModal()"><div class="dlg"><div class="dlg-hd"><span>${ttl}</span><button type="button" onclick="closeModal()">×</button></div><div class="dlg-bd"><form onsubmit="submitNewProj(event)" class="row"><input id="np-in" type="text" placeholder="输入项目名称…" maxlength="40"><button class="p">确定</button></form></div></div></div>`;
+  return;
+ }
+ if(!pmOpen){box.innerHTML="";return}
+ const cntOf=p=>items.filter(i=>i.project===p).length;
+ const rows=PROJECTS.length?PROJECTS.map((p,idx)=>{
+  const cnt=cntOf(p);
+  if(pmEditIdx===idx){
+   return `<div class="pm-row"><form onsubmit="pmSaveRename(event,${idx})" class="row" style="width:100%"><input id="pm-ren" type="text" value="${esc(p)}" maxlength="40"><button class="p">保存</button><button type="button" onclick="pmEditIdx=null;renderModal()">取消</button></form></div>`;
+  }
+  if(pmDelIdx===idx){
+   const tip=cnt?`该项目的 ${cnt} 条事项将变为「未归类」`:"当前没有关联事项";
+   return `<div class="pm-row"><div class="pm-cf"><div>确定删除「<b>${esc(p)}</b>」？</div><div class="hint">${tip}</div><div class="bt" style="justify-content:flex-start"><button type="button" class="danger" onclick="pmConfirmDelete(${idx})">确定删除</button><button type="button" onclick="pmDelIdx=null;renderModal()">取消</button></div></div></div>`;
+  }
+  return `<div class="pm-row"><div class="pm-nm">${esc(p)}<small>${cnt?cnt+" 条":"空闲"}</small></div><div class="bt"><button type="button" onclick="pmStartRename(${idx})">改名</button><button type="button" onclick="pmStartDelete(${idx})">删除</button></div></div>`;
+ }).join(""):'<div class="empty">还没有项目，在上方添加一个吧</div>';
+ box.innerHTML=`<div class="mask" onclick="if(event.target===this)closeModal()"><div class="dlg"><div class="dlg-hd"><span>项目管理</span><button type="button" onclick="closeModal()">关闭</button></div><div class="dlg-bd"><form id="pm-add" onsubmit="pmAdd(event)" class="row"><input id="pm-new" type="text" placeholder="输入新项目名…" maxlength="40"><button class="p">添加</button></form><div>${rows}</div></div></div></div>`;
+}
 async function go(id){say("正在打开对话…");const r=await (await fetch("/api/handle",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id})})).json();
  say(r.ok?(r.reused?"已切到这件事的对话":"已为这件事新开一个对话"):"没有打开："+r.error)}
 function ptime(s){const m=/^(\d{4}-\d{2}-\d{2})(?:\s+(\d{1,2}:\d{2})(?:\s*[–—\-~]\s*(\d{1,2}:\d{2}))?)?$/.exec(s||"");if(!m)return null;
@@ -96,7 +205,10 @@ function render(){const q=$("#q").value.trim().toLowerCase(),f=$("#f").value,p=$
  const arr=v.filter(TABS[tab][1]);if(tab>=3)arr.sort((a,b)=>(b.changed||"").localeCompare(a.changed||""));
  const body=arr.length?(tab===1||tab===2?byProject(arr):arr.map(i=>row(i,tab)).join("")):`<div class="empty">${q||f||p?'没有符合条件的事项':'这里是空的'}</div>`;
  $("#m").innerHTML=body}
-$("#q").oninput=render;$("#f").onchange=render;$("#p").onchange=render;
-$("#add").onsubmit=e=>{e.preventDefault();const t=$("#nt").value.trim();if(!t)return;$("#nt").value="";tab=1;post({type:"add",text:t})};
+$("#q").oninput=render;$("#f").onchange=render;
+$("#p").onchange=()=>{newProj=$("#p").value;syncAddProj();render()};
+$("#np").onchange=e=>{if(e.target.value===NEW_OPT){e.target.value=newProj;openNewProj({kind:"addbar"});return}newProj=e.target.value;syncAddProj()};
+$("#add").onsubmit=e=>{e.preventDefault();const t=$("#nt").value.trim();if(!t)return;$("#nt").value="";tab=1;if($("#p").value&&$("#p").value!==newProj)$("#p").value=newProj;post({type:"add",text:t,project:newProj})};
+document.addEventListener("keydown",e=>{if(e.key==="Escape"){if(npTarget||pmOpen)closeModal();else if(openId!==null){openId=null;render()}}});
 load(true);setInterval(()=>load(false),30000);
 </script></body></html>

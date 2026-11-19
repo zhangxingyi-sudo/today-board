@@ -21,9 +21,7 @@ def cmd_serve(a):
 def cmd_add(a):
     if a.time and not store.valid_time(a.time):
         sys.exit("time must look like 2026-11-13, 2026-11-13 10:00 or 2026-11-13 10:00-11:00")
-    project = (a.project or "").strip()
-    if project and project not in store.projects():
-        sys.exit("unknown project: " + project + "\nknown: " + ("、".join(store.projects()) or "(none configured)"))
+    project = store.clean_project(a.project or "")
     e = store.record({"type": "add", "id": store.new_id(a.origin), "text": a.text, "source": a.source,
                       "status": a.status, "time": a.time or "", "note": a.note or "", "project": project})
     print(e["id"])
@@ -48,10 +46,32 @@ def cmd_set(a):
 def cmd_project(a):
     if not any(i["id"] == a.id for i in store.load()):
         sys.exit(f"no item {a.id}")
-    name = "" if a.name == "-" else a.name.strip()
-    if name and name not in store.projects():
-        sys.exit("unknown project: " + name + "\nknown: " + ("、".join(store.projects()) or "(none configured)"))
+    name = "" if a.name == "-" else store.clean_project(a.name)
     store.record({"type": "project", "id": a.id, "project": name})
+
+
+def cmd_projects(a):
+    if a.add:
+        name = store.clean_project(a.add)
+        if not name:
+            sys.exit("project name cannot be empty")
+        store.record({"type": "project_add", "name": name})
+    elif a.rename:
+        old, new = store.clean_project(a.rename[0]), store.clean_project(a.rename[1])
+        if not old or not new or old == new:
+            sys.exit("invalid project rename")
+        store.record({"type": "project_rename", "old": old, "new": new})
+    elif a.delete:
+        name = store.clean_project(a.delete)
+        if not name:
+            sys.exit("project name cannot be empty")
+        store.record({"type": "project_delete", "name": name})
+    names = list(store.projects())
+    if a.json:
+        print(json.dumps(names, ensure_ascii=False))
+    else:
+        for name in names:
+            print(name)
 
 
 def ingest():
@@ -73,9 +93,7 @@ def ingest():
                 skipped += 1
                 continue
             t = str(r.get("time", "")).strip()
-            project = str(r.get("project", "")).strip()
-            if project not in store.projects():
-                project = ""
+            project = store.clean_project(r.get("project", ""))
             store.record({"type": "add", "id": store.new_id("m"), "text": text, "status": "待确认",
                           "source": store.clean(r.get("source", "inbox"), 60) or "inbox",
                           "time": t if store.valid_time(t) else "", "note": str(r.get("note", "")).strip()[:500],
@@ -116,6 +134,8 @@ def cmd_sync(a):
         if r.returncode != 0:
             sys.exit("git pull failed: " + r.stderr.strip()[-300:])
     n = store.merge() if owner else 0
+    if owner:
+        store.ensure_project_header()
     mine = [str(events)] + ([str(todo), str(store.path("applied_file"))] if owner else [])
     _git(repo, "add", "--", *[m for m in mine if pathlib.Path(m).exists()])
     if _git(repo, "diff", "--cached", "--quiet").returncode != 0:
@@ -252,8 +272,14 @@ def main(argv=None):
     s.set_defaults(f=cmd_set)
     s = sub.add_parser("project", help="set which project an existing item belongs to")
     s.add_argument("id")
-    s.add_argument("name", help="a known project name, or - to clear it")
+    s.add_argument("name", help="project name (creates it if new), or - to clear it")
     s.set_defaults(f=cmd_project)
+    s = sub.add_parser("projects", help="list or manage synced project names")
+    s.add_argument("--json", action="store_true")
+    s.add_argument("--add", help="add a project name")
+    s.add_argument("--rename", nargs=2, metavar=("OLD", "NEW"), help="rename a project across all items")
+    s.add_argument("--delete", help="delete a project (items become uncategorized)")
+    s.set_defaults(f=cmd_projects)
     s = sub.add_parser("merge", help="sync mode: apply recorded events to the Markdown file")
     s.add_argument("-v", "--verbose", action="store_true")
     s.set_defaults(f=cmd_merge)

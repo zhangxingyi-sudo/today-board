@@ -54,9 +54,11 @@ today dock       # 挂到 cmux 的 Dock（先打开 cmux）
 ```sh
 today add "给客户回邮件"                                   # 进“待确认”
 today add "周会" --status todo --time "2026-11-13 10:00-11:00"
-today add "核对周五的会议材料" --source daily-summary --note "带上上周的数据"
+today add "核对周五的会议材料" --source daily-summary --project 项目甲 --note "带上上周的数据"
 today list --status pending --json
 today set 261113-m01 done
+today project 261113-m01 项目乙                            # 归类到项目（新项目自动创建，- 表示清空）
+today projects --add 项目丙                                # 管理项目（支持 --add / --rename / --delete）
 today ingest          # 把 inbox/ 里的 JSON 文件送进清单
 today sync            # 同步模式：拉取、合并、推送
 ```
@@ -68,13 +70,18 @@ today sync            # 同步模式：拉取、合并、推送
 ## 文件格式
 
 ```markdown
+# Todo
+
+项目：项目甲、项目乙
+
 - [待确认] 261112-m01 | 准备周四评审的材料 | daily-summary | 2026-11-12
   - 项目：项目甲
   - 时间：2026-11-13 10:00
   - 备注：先把上周的数据补齐
 ```
 
-每条一行：`- [状态] 编号 | 内容 | 来源 | 首次出现日期`。来源是材料从哪来。项目写在下面，表示这件事属于哪一块工作。要推进和待确认按项目分组。具体项目名写在本机配置的 `projects` 里，不放进仓库。
+顶部 `项目：...` 保存随清单多机同步的项目列表；看板里可直接新建、改名、删除项目，无需手动改配置文件。
+每条一行：`- [状态] 编号 | 内容 | 来源 | 首次出现日期`。来源是材料从哪来。项目写在下面，表示这件事属于哪一块工作。要推进和待确认按项目分组。
 状态有五种：待确认、进行中、已完成、已推迟、已取消；也接受英文的 pending、todo、done、later、ignored。
 编号是“六位日期-来源字母和序号”，`m` 是自动加入的，`b` 是在清单上手动加的，两边各自编号不会撞。
 
@@ -93,7 +100,7 @@ today sync            # 同步模式：拉取、合并、推送
 | `agent_command` | `claude` | “处理 ▸”启动的命令，可以换成 `codex` 等 |
 | `agent_cwd` | `~` | 新对话的工作目录 |
 | `status_style` | `zh` | 写文件时用中文还是英文状态 |
-| `projects` | `[]` | 本机的项目名单，用于下拉和校验。例如 `["工作", "家庭"]` |
+| `projects` | `[]` | 可选初始项目名单；一旦 `todo.md` 写入同步项目列表，以清单为准 |
 
 ## 安全
 

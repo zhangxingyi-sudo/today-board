@@ -91,6 +91,19 @@ class Handler(BaseHTTPRequestHandler):
             if t == "add":
                 rec.update(id=store.new_id("b"), text=store.clean(e["text"], 500), source="manual")
                 assert rec["text"]
+                proj = store.clean_project(e.get("project") or "")
+                if proj:
+                    rec["project"] = proj
+            elif t == "project_add":
+                rec["name"] = store.clean_project(e.get("name") or e.get("project") or "")
+                assert rec["name"]
+            elif t == "project_rename":
+                rec["old"] = store.clean_project(e.get("old") or "")
+                rec["new"] = store.clean_project(e.get("new") or "")
+                assert rec["old"] and rec["new"] and rec["old"] != rec["new"]
+            elif t == "project_delete":
+                rec["name"] = store.clean_project(e.get("name") or e.get("project") or "")
+                assert rec["name"]
             else:
                 assert re.fullmatch(store.ID, e["id"])
                 rec["id"] = e["id"]
@@ -106,8 +119,7 @@ class Handler(BaseHTTPRequestHandler):
                     rec["time"] = str(e["time"]).strip()
                     assert store.valid_time(rec["time"])
                 elif t == "project":
-                    rec["project"] = str(e.get("project") or "").strip()
-                    assert rec["project"] in ("",) + store.projects()
+                    rec["project"] = store.clean_project(e.get("project") or "")
                 else:
                     raise ValueError(t)
         except (AssertionError, KeyError, ValueError, TypeError):

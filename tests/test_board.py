@@ -75,6 +75,7 @@ class BoardTest(unittest.TestCase):
         store.record({"type": "add", "id": "261112-m01", "text": "准备评审材料", "source": "cli",
                       "status": "待确认", "project": "work"})
         text = store.path("todo_file").read_text(encoding="utf-8")
+        self.assertIn("项目：work、home", text)
         self.assertIn("项目：work", text)
         item = next(i for i in store.load() if i["id"] == "261112-m01")
         self.assertEqual(item["project"], "work")
@@ -82,6 +83,102 @@ class BoardTest(unittest.TestCase):
         store.record({"type": "project", "id": "261112-m01", "project": "home"})
         item = next(i for i in store.load() if i["id"] == "261112-m01")
         self.assertEqual(item["project"], "home")
+
+    def test_project_lifecycle_and_multi_machine_sync(self):
+        # Secondary machine has no local projects configured; host has one legacy project.
+        self.write_config(mode="sync", merge_here=False, todo_file="sync/todo/todo.md",
+                          events_file="sync/board/macbook.jsonl", applied_file="sync/todo/applied.json",
+                          id_letter={"b": "c", "m": "n"})
+        store.record({"type": "project_add", "name": "Alpha"})
+        e_add = store.record({"type": "add", "id": store.new_id("b"), "text": "搭建原型", "source": "manual",
+                              "status": "进行中", "project": "Beta"})
+        # Immediately visible locally on secondary machine before merge
+        self.assertEqual(list(store.projects()), ["Alpha", "Beta"])
+        self.assertEqual(next(i for i in store.load() if i["id"] == e_add["id"])["project"], "Beta")
+
+        # Host merges secondary machine's events into todo.md
+        self.write_config(mode="sync", merge_here=True, todo_file="sync/todo/todo.md",
+                          events_file="sync/board/mini.jsonl", applied_file="sync/todo/applied.json",
+                          projects=["Legacy"])
+        self.assertGreaterEqual(store.merge(), 2)
+        md = store.path("todo_file").read_text(encoding="utf-8")
+        self.assertIn("项目：Legacy、Alpha、Beta", md)
+        self.assertEqual(list(store.projects()), ["Legacy", "Alpha", "Beta"])
+
+        # Rename Beta -> Gamma on host updates header and item
+        store.record({"type": "project_rename", "old": "Beta", "new": "Gamma"})
+        self.assertEqual(list(store.projects()), ["Legacy", "Alpha", "Gamma"])
+        self.assertEqual(next(i for i in store.load() if i["id"] == e_add["id"])["project"], "Gamma")
+
+        # Delete every project; legacy config must not resurrect deleted projects
+        for name in ("Legacy", "Alpha", "Gamma"):
+            store.record({"type": "project_delete", "name": name})
+        self.assertEqual(list(store.projects()), [])
+        self.assertEqual(next(i for i in store.load() if i["id"] == e_add["id"])["project"], "")
+
+    def test_ensure_project_header_migrates_once(self):
+        self.write_config(mode="sync", merge_here=True, todo_file="sync/todo/todo.md",
+                          events_file="sync/board/mini.jsonl", applied_file="sync/todo/applied.json",
+                          projects=["ProjA", "ProjB"])
+        store.write_todo(["# Todo", ""], [])
+        self.assertTrue(store.ensure_project_header())
+        self.assertIn("项目：ProjA、ProjB", store.path("todo_file").read_text(encoding="utf-8"))
+        self.assertFalse(store.ensure_project_header())
+
+    def test_cli_projects_and_add_new_project(self):
+        env = os.environ.copy()
+        env["TODAY_BOARD_HOME"] = str(self.home)
+        env["PYTHONPATH"] = str(ROOT)
+        subprocess.run([sys.executable, "-m", "today_board", "add", "写设计稿", "--project", "Design"],
+                       cwd=ROOT, env=env, check=True, capture_output=True, text=True)
+        subprocess.run([sys.executable, "-m", "today_board", "projects", "--add", "Ops"],
+                       cwd=ROOT, env=env, check=True, capture_output=True, text=True)
+        out = subprocess.run([sys.executable, "-m", "today_board", "projects", "--json"],
+                             cwd=ROOT, env=env, check=True, capture_output=True, text=True)
+        self.assertEqual(json.loads(out.stdout), ["Design", "Ops"])
+        subprocess.run([sys.executable, "-m", "today_board", "projects", "--rename", "Design", "UX"],
+                       cwd=ROOT, env=env, check=True, capture_output=True, text=True)
+        out = subprocess.run([sys.executable, "-m", "today_board", "projects", "--json"],
+                             cwd=ROOT, env=env, check=True, capture_output=True, text=True)
+        self.assertEqual(json.loads(out.stdout), ["UX", "Ops"])
+        subprocess.run([sys.executable, "-m", "today_board", "projects", "--delete", "Ops"],
+                       cwd=ROOT, env=env, check=True, capture_output=True, text=True)
+        out = subprocess.run([sys.executable, "-m", "today_board", "projects", "--json"],
+                             cwd=ROOT, env=env, check=True, capture_output=True, text=True)
+        self.assertEqual(json.loads(out.stdout), ["UX"])
+
+    def test_http_api_project_events(self):
+        import threading, urllib.request
+        from http.server import ThreadingHTTPServer
+        from today_board import server
+
+        self.write_config(mode="local")
+        srv = ThreadingHTTPServer(("127.0.0.1", 0), server.Handler)
+        port = srv.server_address[1]
+        th = threading.Thread(target=srv.serve_forever, daemon=True)
+        th.start()
+        try:
+            def api(path, body=None):
+                data = None if body is None else json.dumps(body).encode()
+                req = urllib.request.Request(f"http://127.0.0.1:{port}{path}", data=data,
+                                             headers={"Content-Type": "application/json"} if data else {})
+                with urllib.request.urlopen(req, timeout=3) as r:
+                    return json.loads(r.read().decode())
+
+            api("/api/event", {"type": "project_add", "name": "Roadmap"})
+            added = api("/api/event", {"type": "add", "text": "整理需求", "project": "Hardware"})
+            self.assertEqual(api("/api/projects"), ["Roadmap", "Hardware"])
+            api("/api/event", {"type": "project_rename", "old": "Hardware", "new": "Devices"})
+            self.assertEqual(api("/api/projects"), ["Roadmap", "Devices"])
+            items = api("/api/items")
+            self.assertEqual(next(i for i in items if i["id"] == added["id"])["project"], "Devices")
+            api("/api/event", {"type": "project_delete", "name": "Devices"})
+            self.assertEqual(api("/api/projects"), ["Roadmap"])
+            items = api("/api/items")
+            self.assertEqual(next(i for i in items if i["id"] == added["id"])["project"], "")
+        finally:
+            srv.shutdown()
+            srv.server_close()
 
 
 if __name__ == "__main__":

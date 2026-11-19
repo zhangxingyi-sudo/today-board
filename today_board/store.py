@@ -26,7 +26,7 @@ DEFAULTS = {
     "agent_cwd": "~",
     "cmux": "/Applications/cmux.app/Contents/Resources/bin/cmux",
     "status_style": "zh",            # how statuses are written to the file: zh or en
-    "projects": [],                  # local names for the project dropdown; not shipped with the app
+    "projects": [],                  # optional initial project list; synced projects live in todo.md
 }
 ZH = ("待确认", "进行中", "已完成", "已推迟", "已取消")
 EN = ("pending", "todo", "done", "later", "ignored")
@@ -34,6 +34,7 @@ TO_ZH = {**{z: z for z in ZH}, **dict(zip(EN, ZH))}
 ID = r"\d{6}-[a-z]\d{2,}"
 LINE = re.compile(rf"^- \[(?P<status>[^\]]+)\]\s*(?P<id>{ID})\s*\|\s*(?P<text>.*?)\s*\|\s*(?P<source>[^|]*?)\s*\|\s*(?P<date>\d{{4}}-\d{{2}}-\d{{2}})\s*$")
 SUB = re.compile(r"^\s+- (?P<k>时间|备注|项目|time|note|project)[:：]\s*(?P<v>.*)$", re.I)
+PROJ_HDR = re.compile(r"^(?:项目|projects)\s*[:：]\s*(?P<v>.*)$", re.I)
 TIME = re.compile(r"^(\d{4}-\d{2}-\d{2})(?:\s+(\d{1,2}:\d{2})(?:\s*[–—\-~]\s*(\d{1,2}:\d{2}))?)?$")
 
 
@@ -46,19 +47,62 @@ def config():
     return c
 
 
-def projects():
-    """Project names from this machine's config. The public source does not carry anyone's list."""
+def clean_project(s):
+    return re.sub(r"\s+", " ", re.sub(r"[|、,，]+", " ", str(s or ""))).strip()[:40]
+
+
+def config_projects():
+    """Optional fallback project names from local config, used before todo.md declares its own list."""
     raw = config().get("projects") or []
     if isinstance(raw, str):
-        raw = raw.replace("，", ",").split(",")
+        raw = re.split(r"[、,，]", raw)
     if not isinstance(raw, (list, tuple)):
-        return ()
+        return []
     out = []
     for name in raw:
-        name = str(name).strip()
+        name = clean_project(name)
         if name and name not in out:
-            out.append(name[:40])
-    return tuple(out)
+            out.append(name)
+    return out
+
+
+def header_projects(pre):
+    for l in pre:
+        m = PROJ_HDR.match(l.strip())
+        if m:
+            out = []
+            for part in re.split(r"[、,，]", m.group("v")):
+                name = clean_project(part)
+                if name and name not in out:
+                    out.append(name)
+            return True, out
+    return False, []
+
+
+def set_header_projects(pre, projs):
+    en = config()["status_style"] == "en"
+    line = ("projects: " + ", ".join(projs)) if en else ("项目：" + "、".join(projs))
+    out, replaced = [], False
+    for l in pre:
+        if PROJ_HDR.match(l.strip()):
+            if not replaced:
+                out.append(line)
+                replaced = True
+        else:
+            out.append(l)
+    if not replaced:
+        while out and not out[-1].strip():
+            out.pop()
+        if not out:
+            out = ["# Todo"]
+        out.extend(["", line])
+    return out
+
+
+def projects():
+    """Synced project names: todo.md header plus any project on items and pending events."""
+    _, _, projs, _, _, _ = load_state(everyone=False)
+    return tuple(projs)
 
 
 def path(key):
@@ -303,17 +347,59 @@ def parse_when(text, now=None):
     return f"{day.isoformat()} {clock}" if clock else day.isoformat()
 
 
-def apply(items, events):
-    """Apply events to items in place. Returns how many took effect."""
+def apply(items, events, projs=None):
+    """Apply events to items (and optional project list) in place. Returns how many took effect."""
     by, n = {i["id"]: i for i in items}, 0
+    if projs is None:
+        projs = []
     for _, e in events:
         t = e.get("type", "status")
+        if t == "project_add":
+            name = clean_project(e.get("name") or e.get("project") or "")
+            if name and name not in projs:
+                projs.append(name); n += 1
+            continue
+        if t == "project_rename":
+            old = clean_project(e.get("old") or "")
+            new = clean_project(e.get("new") or "")
+            if old and new and old != new:
+                changed = False
+                if old in projs:
+                    idx = projs.index(old)
+                    if new in projs:
+                        projs.pop(idx)
+                    else:
+                        projs[idx] = new
+                    changed = True
+                elif new not in projs:
+                    projs.append(new); changed = True
+                for it in items:
+                    if it.get("project") == old:
+                        it["project"] = new; it["touched"] = True; changed = True
+                if changed:
+                    n += 1
+            continue
+        if t == "project_delete":
+            name = clean_project(e.get("name") or e.get("project") or "")
+            if name:
+                changed = False
+                if name in projs:
+                    projs.remove(name); changed = True
+                for it in items:
+                    if it.get("project") == name:
+                        it["project"] = ""; it["touched"] = True; changed = True
+                if changed:
+                    n += 1
+            continue
         if t == "add":
             if e.get("id") and e["id"] not in by:
+                proj = clean_project(e.get("project") or "")
+                if proj and proj not in projs:
+                    projs.append(proj)
                 it = {"id": e["id"], "status": TO_ZH.get(e.get("status", "进行中"), "进行中"), "text": clean(e.get("text", ""), 500),
                       "source": clean(e.get("source", "manual"), 60) or "manual", "date": e.get("at", "")[:10] or datetime.date.today().isoformat(),
                       "note": str(e.get("note", "")).strip(), "time": e.get("time", "") if valid_time(e.get("time", "")) else "",
-                      "project": str(e.get("project") or "").strip() if str(e.get("project") or "").strip() in projects() else ""}
+                      "project": proj}
                 items.append(it); by[it["id"]] = it; it["touched"] = True; n += 1
             continue
         it = by.get(e.get("id"))
@@ -327,23 +413,60 @@ def apply(items, events):
             it["note"] = str(e.get("note", "")).strip()[:2000]
         elif t == "time" and valid_time(e.get("time", "")):
             it["time"] = e["time"].strip()
-        elif t == "project" and str(e.get("project") or "").strip() in ("",) + projects():
-            it["project"] = str(e.get("project") or "").strip()
+        elif t == "project":
+            proj = clean_project(e.get("project") or "")
+            it["project"] = proj
+            if proj and proj not in projs:
+                projs.append(proj)
         else:
             continue
         it["touched"] = True; n += 1
     return n
 
 
+def load_state(everyone=False):
+    pre, items = read_todo()
+    has_header, projs = header_projects(pre)
+    if not has_header:
+        projs = config_projects()
+    for it in items:
+        p = clean_project(it.get("project", ""))
+        it["project"] = p
+        if p and p not in projs:
+            projs.append(p)
+    ev = pending_events(everyone=everyone)
+    n = apply(items, ev, projs)
+    return pre, items, projs, ev, n, has_header
+
+
+def ensure_project_header():
+    """Write existing config/item projects into todo.md once on the owning machine so they sync everywhere."""
+    if not merges_here():
+        return False
+    pre, items = read_todo()
+    has_header, _ = header_projects(pre)
+    if has_header:
+        return False
+    projs = config_projects()
+    for it in items:
+        p = clean_project(it.get("project", ""))
+        if p and p not in projs:
+            projs.append(p)
+    if not projs:
+        return False
+    write_todo(set_header_projects(pre, projs), items)
+    return True
+
+
 def merge():
     """Write pending events from every machine into the Markdown file and remember them as applied."""
-    ev = pending_events(everyone=True)
+    pre, items, projs, ev, n, has_header = load_state(everyone=True)
     if not ev:
         return 0
-    pre, items = read_todo()
-    n = apply(items, ev)
     for i in items:
         i.pop("touched", None); i.pop("changed", None)
+    if has_header or projs or any(e.get("type", "").startswith("project") for _, e in ev):
+        pre = set_header_projects(pre, projs)
     write_todo(pre, items)
     a = path("applied_file")
     a.parent.mkdir(parents=True, exist_ok=True)
@@ -384,8 +507,7 @@ def valid_time(s):
 
 def load():
     """Items as the board should show them: the file plus events not merged yet."""
-    _, items = read_todo()
-    apply(items, pending_events())
+    _, items, _, _, _, _ = load_state(everyone=False)
     for i in items:
         i["local"] = bool(i.pop("touched", False))
     return items
